@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 
 P = os.path.join("data", "processed")
-OUT = os.path.join("platform", "data")
+OUT = os.path.join("docs", "data")      # served by GitHub Pages
 CROPS = {"winter_wheat": "Winter wheat", "winter_barley": "Winter barley", "grain_maize": "Grain maize",
          "silage_maize": "Silage maize", "potato": "Potato"}
 LEADS = (12, 8, 6, 4, 2, 0)
