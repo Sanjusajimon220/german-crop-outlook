@@ -74,6 +74,7 @@ def main():
         for _, x in g.iterrows():
             water.setdefault(str(int(x["year"])), {})[x["district"]] = [r2(x["phys_eta_mm"]), r2(x["phys_etp_mm"]),
                                                                           r2(x["phys_water_ratio"])]
+        water["2026"] = {d: [None, None, r2(v)] for d, v in zip(p26["district"], p26["water_ratio"])}
         json.dump(water, open(os.path.join(OUT, f"water_{crop}.json"), "w"), separators=(",", ":"))
         crops_meta[crop] = dict(label=label, unit="t/ha", harvest_doy=harvest,
                                 leads={str(l): harvest - 7 * l for l in LEADS},

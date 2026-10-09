@@ -68,7 +68,7 @@ th{font:600 11px var(--f-body);letter-spacing:.06em;text-transform:uppercase;col
 .prose{max-width:72ch}
 .prose p,.prose li{line-height:1.6}
 section[hidden]{display:none}
-.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:12px var(--f-mono);box-shadow:0 2px 8px rgba(0,0,0,.15);display:none;z-index:2;max-width:240px}
+.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font:12px/1.5 var(--f-mono);box-shadow:0 2px 8px rgba(0,0,0,.25);display:none;z-index:2;max-width:280px}
 </style>
 
 <div class="wrap">
@@ -90,10 +90,14 @@ section[hidden]{display:none}
       <input type="range" id="lead" min="0" max="5" step="1" value="3" aria-describedby="leadval">
       <span class="leadval" id="leadval"></span></div>
     <div class="ctl"><label for="layer">Map shows</label><select id="layer">
-      <option value="median">Forecast yield</option>
+      <option value="median">Forecast yield (t/ha)</option>
+      <option value="official">Official yield (t/ha)</option>
       <option value="dev">Forecast vs official (%)</option>
-      <option value="width">Range width (80 %)</option>
+      <option value="width">Range width, 80 % (t/ha)</option>
       <option value="water">Water supply (use / demand)</option>
+      <option value="wuse">Water use, season (mm)</option>
+      <option value="wdem">Water demand, season (mm)</option>
+      <option value="ndvi">Satellite greenness (NDVI)</option>
     </select></div>
   </div>
   <div class="grid">
@@ -149,12 +153,25 @@ function rowFor(code, year = S.year, lead = LEADS[S.lead]) {
   const fc = S.data[S.crop].fc[year]; if (!fc) return null;
   const L = fc[lead] || fc["0"]; return L ? L[code] : null;
 }
+function ndviAt(code) {
+  const N = NDVI && NDVI[S.year]; if (!N || !N.v[code]) return null;
+  const c = META.crops[S.crop], doy = S.year === "2026" ? 300 : c.leads[LEADS[S.lead]];
+  let best = null;
+  N.dates.forEach((s, i) => { const [m, d] = s.split("-").map(Number); const dd = (Date.UTC(2021, m - 1, d) - Date.UTC(2021, 0, 1)) / 864e5 + 1;
+    if (dd <= doy && N.v[code][i] != null) best = N.v[code][i]; });
+  return best;
+}
+function waterFor(code) { return (S.data[S.crop].water[S.year] || {})[code] || null; }
 function valueFor(code) {
+  if (S.layer === "ndvi") return ndviAt(code);
+  if (S.layer === "wuse") { const w = waterFor(code); return w ? w[0] : null; }
+  if (S.layer === "wdem") { const w = waterFor(code); return w ? w[1] : null; }
+  if (S.layer === "water") { const w = waterFor(code); return w ? w[2] : null; }
   const r = rowFor(code); if (!r) return null;
   if (S.layer === "median") return r[0];
+  if (S.layer === "official") return r[3];
   if (S.layer === "dev") return r[3] != null && r[0] != null ? 100 * (r[0] - r[3]) / r[3] : null;
   if (S.layer === "width") return r[1] != null ? r[2] - r[1] : null;
-  if (S.layer === "water") { const w = (S.data[S.crop].water[S.year] || {})[code]; return w ? w[2] : null; }
 }
 
 function drawMap() {
@@ -167,6 +184,8 @@ function drawMap() {
   // forecast vs official blue (too low) - white - red (too high), water red (stressed) - blue, range width one hue
   if (S.layer === "dev") { const m = Math.max(5, Math.abs(lo || 0), Math.abs(hi || 0)); domain = [-m, m]; scale = d3.scaleDiverging(t => d3.interpolateRdBu(1 - t)).domain([-m, 0, m]); }
   else if (S.layer === "water") { domain = [Math.min(lo ?? .5, .99), 1]; scale = d3.scaleSequential(d3.interpolateRdYlBu).domain(domain); }
+  else if (S.layer === "wuse" || S.layer === "wdem") { domain = [lo ?? 0, hi ?? 1]; scale = d3.scaleSequential(d3.interpolateBlues).domain([domain[0] - (domain[1] - domain[0]) * 0.25, domain[1]]); }
+  else if (S.layer === "ndvi") { domain = [lo ?? 0, hi ?? 1]; scale = d3.scaleSequential(d3.interpolateYlGn).domain(domain); }
   else if (S.layer === "width") { domain = [lo ?? 0, hi ?? 1]; scale = d3.scaleSequential(d3.interpolatePurples).domain([domain[0] - (domain[1] - domain[0]) * 0.3, domain[1]]); }
   else { domain = [lo ?? 0, hi ?? 1]; scale = d3.scaleSequential(d3.interpolateRdYlGn).domain(domain); }
   const sel = svg.selectAll("path.d").data(GEO.features, f => f.properties.code);
@@ -175,16 +194,20 @@ function drawMap() {
     .on("mousemove", (e, f) => { const t = document.getElementById("tip"), v = valueFor(f.properties.code), r = rowFor(f.properties.code);
       t.style.display = "block"; const b = document.querySelector(".mapbox").getBoundingClientRect();
       t.style.left = (e.clientX - b.left + 12) + "px"; t.style.top = (e.clientY - b.top + 12) + "px";
-      t.textContent = `${f.properties.name}: ${r ? fmt(r[0]) + " t/ha" : "no forecast"}${r && r[3] != null ? " · official " + fmt(r[3]) : ""}`; })
+      const w = waterFor(f.properties.code), nd = ndviAt(f.properties.code);
+      t.innerHTML = `<b>${f.properties.name}</b><br>` + (r ? `forecast ${fmt(r[0])} t/ha${r[1] != null ? " (80 %: " + fmt(r[1]) + "–" + fmt(r[2]) + ")" : ""}` : "no forecast (no official statistics)")
+        + (r && r[3] != null ? `<br>official ${fmt(r[3])} t/ha · error ${(r[0] > r[3] ? "+" : "") + fmt(100 * (r[0] - r[3]) / r[3], 1)} %` : "")
+        + (w && w[0] != null ? `<br>water use ${fmt(w[0], 0)} of ${fmt(w[1], 0)} mm demand` : w && w[2] != null ? `<br>water supply ratio ${fmt(w[2])}` : "")
+        + (nd != null ? `<br>greenness (NDVI) ${fmt(nd)}` : ""); })
     .on("mouseleave", () => document.getElementById("tip").style.display = "none")
     .on("click", (e, f) => { S.sel = f.properties.code; drawMap(); drawPanel(); });
-  const unit = { median: "t/ha", dev: "% vs official", width: "t/ha", water: "use / demand" }[S.layer];
+  const unit = { median: "t/ha", official: "t/ha", dev: "% vs official", width: "t/ha", water: "use / demand", wuse: "mm", wdem: "mm", ndvi: "NDVI" }[S.layer];
   const stops = d3.range(0, 1.01, .1).map(t => scale(domain[0] + t * (domain[1] - domain[0])));
   document.getElementById("legend").innerHTML = `<span>${fmt(domain[0], S.layer === "dev" ? 0 : 2)}</span><span class="bar" style="background:linear-gradient(90deg,${stops.join(",")})"></span><span>${fmt(domain[1], S.layer === "dev" ? 0 : 2)} ${unit}</span>`;
   const y = S.year, c = META.crops[S.crop];
   document.getElementById("mapnote").textContent = y === "2026"
     ? "2026: frozen end-of-season prediction; checked against official district yields in spring 2027."
-    : `Forecast made on ${doyDate(y, c.leads[LEADS[S.lead]])} ${y}, ${LEADS[S.lead]} weeks before the typical harvest. Grey: no forecast or no official yield.`;
+    : `Forecast made on ${doyDate(y, c.leads[LEADS[S.lead]])} ${y}, ${LEADS[S.lead]} weeks before the typical harvest. Grey: no data for this layer. Forecasts exist where Destatis publishes an official district yield for the crop (city districts and small or confidential areas are not published). Water: simulated for the whole season. Greenness: MODIS, latest composite before the forecast date, all cropland.`;
 }
 
 function fanChart(code) {
@@ -239,7 +262,9 @@ function drawPanel() {
   </div>`;
   if (inside != null) h += `<p><span class="pill ${inside ? "good" : "bad"}">${inside ? "official yield inside the 80 % range" : "official yield outside the 80 % range"}</span></p>`;
   if (S.year !== "2026") h += `<h3>Through the season</h3>${fanChart(code)}<p class="note">Shaded: 80 % range. Dashed: official yield.</p>`;
-  if (w) h += `<h3>Water (simulated season)</h3><p>Crop water use <b>${fmt(w[0], 0)} mm</b> of a demand of <b>${fmt(w[1], 0)} mm</b> · supply ratio <b>${fmt(w[2])}</b>${w[2] < 0.85 ? ' <span class="pill bad">water-limited</span>' : ""}</p>`;
+  if (!r && code.length === 5) h += `<p class="note">No forecast for ${c.label.toLowerCase()} here: Destatis publishes no official district yield for this crop in this district and season (crop absent, city district, or small / confidential area). Satellite greenness below is still shown.</p>`;
+  if (w && w[0] == null && w[2] != null) h += `<h3>Water (2026, simulated)</h3><p>Supply ratio <b>${fmt(w[2])}</b>${w[2] < 0.85 ? ' <span class="pill bad">water-limited</span>' : ""}</p>`;
+  if (w && w[0] != null) h += `<h3>Water (simulated season)</h3><p>Crop water use <b>${fmt(w[0], 0)} mm</b> of a demand of <b>${fmt(w[1], 0)} mm</b> · supply ratio <b>${fmt(w[2])}</b>${w[2] < 0.85 ? ' <span class="pill bad">water-limited</span>' : ""}</p>`;
   const nd = ndviChart(code);
   if (nd) h += `<h3>Satellite greenness (MODIS NDVI, cropland)</h3>${nd}<p class="note">Green: ${S.year}. Grey: other seasons 2018-2026.</p>`;
   if (code.length === 5) h += `<p><button id="toState">Show ${META.states[code.slice(0, 2)]}</button> <button id="toDE">Show Germany</button></p>`;
