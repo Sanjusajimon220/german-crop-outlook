@@ -1,0 +1,299 @@
+<meta charset="utf-8">
+<title>German Crop Outlook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: control strip on top, map left + district panel right (stacks on phones); tabs for Accuracy / Method */
+/* Groundtruth-earth frame: dark navy first (as groundtruth-earth.netlify.app), light variant for light-mode viewers */
+:root{
+  --bg:#0a0e1a; --panel:#161e33; --ink:#eef1f8; --muted:#8b96b4; --line:#26304a;
+  --accent:#f2a93b; --accent-soft:#3a2f1a; --good:#7cc4ec; --bad:#e0562a; --violet:#6b3f97;
+  --f-display:"Space Grotesk",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){
+  --bg:#f4f6fb; --panel:#ffffff; --ink:#0d2c54; --muted:#4a5f8f; --line:#dbe3f5;
+  --accent:#b9741a; --accent-soft:#fbecd2; --good:#2b6fb5; --bad:#c44a22; --violet:#6b3f97; color-scheme:light}}
+:root[data-theme="light"]{
+  --bg:#f4f6fb; --panel:#ffffff; --ink:#0d2c54; --muted:#4a5f8f; --line:#dbe3f5;
+  --accent:#b9741a; --accent-soft:#fbecd2; --good:#2b6fb5; --bad:#c44a22; --violet:#6b3f97; color-scheme:light}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--f-body);padding-block:0 32px;padding-inline:16px;margin:0}
+.wrap{max-width:1280px;margin:0 auto}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 24px;padding-block:18px 10px;border-bottom:1px solid var(--line)}
+h1{font:600 28px/1.1 var(--f-display);letter-spacing:.01em;margin:0}
+.tag{font:500 12px var(--f-mono);color:var(--muted)}
+nav{display:flex;gap:4px;margin-left:auto}
+nav button{font:600 14px var(--f-display);letter-spacing:.04em;text-transform:uppercase;background:none;border:1px solid transparent;color:var(--muted);padding:6px 12px;border-radius:6px;cursor:pointer}
+nav button[aria-selected="true"]{color:var(--ink);border-color:var(--line);background:var(--panel)}
+nav button:focus-visible,select:focus-visible,input:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.controls{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:end;padding-block:14px}
+.ctl{display:flex;flex-direction:column;gap:4px;min-width:0}
+.ctl label{font:600 11px var(--f-body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+select{font:15px var(--f-body);padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink)}
+.lead{flex:1 1 280px}
+.lead input{width:100%;accent-color:var(--accent)}
+.leadval{font:500 13px var(--f-mono)}
+.grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:16px}
+@media (max-width:860px){.grid{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.mapbox{position:relative}
+#map{width:100%;height:auto;display:block}
+#map path.d{stroke:var(--bg);stroke-width:.35;cursor:pointer}
+#map path.d:hover,#map path.sel{stroke:var(--ink);stroke-width:1.4}
+.legend{display:flex;align-items:center;gap:8px;font:12px var(--f-mono);color:var(--muted);flex-wrap:wrap}
+.legend .bar{height:10px;flex:1 1 160px;border-radius:3px}
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0}
+.kpi{border:1px solid var(--line);border-radius:8px;padding:8px}
+.kpi .k{font:600 11px var(--f-body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.kpi .v{font:600 22px var(--f-display);font-variant-numeric:tabular-nums}
+.kpi .s{font:12px var(--f-mono);color:var(--muted)}
+h2{font:600 20px var(--f-display);margin:0 0 4px;text-wrap:balance}
+h3{font:600 13px var(--f-body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+.note{font-size:13px;color:var(--muted)}
+.chart{width:100%;height:auto;display:block}
+.chart text{fill:var(--muted);font:11px var(--f-mono)}
+.chart .ax{stroke:var(--line)}
+.pill{display:inline-block;font:600 11px var(--f-mono);padding:2px 7px;border-radius:999px;background:var(--accent-soft);color:var(--ink)}
+.pill.good{background:color-mix(in srgb,var(--good) 18%,transparent)}
+.pill.bad{background:color-mix(in srgb,var(--bad) 18%,transparent)}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;font-size:14px;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font:600 11px var(--f-body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tbl{overflow-x:auto}
+.win{color:var(--good);font-weight:600}.lose{color:var(--bad)}
+.prose{max-width:72ch}
+.prose p,.prose li{line-height:1.6}
+section[hidden]{display:none}
+.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:12px var(--f-mono);box-shadow:0 2px 8px rgba(0,0,0,.15);display:none;z-index:2;max-width:240px}
+</style>
+
+<div class="wrap">
+<header>
+  <h1>German Crop Outlook</h1>
+  <span class="tag">a Groundtruth-earth project · district yield forecasts · model v10 · phase 1</span>
+  <nav role="tablist" aria-label="Pages">
+    <button role="tab" id="tab-explore" aria-selected="true" data-page="explore">Explorer</button>
+    <button role="tab" id="tab-acc" aria-selected="false" data-page="accuracy">Accuracy</button>
+    <button role="tab" id="tab-method" aria-selected="false" data-page="method">Method</button>
+  </nav>
+</header>
+
+<section id="page-explore">
+  <div class="controls">
+    <div class="ctl"><label for="crop">Crop</label><select id="crop"></select></div>
+    <div class="ctl"><label for="year">Season</label><select id="year"></select></div>
+    <div class="ctl lead"><label for="lead">Forecast date</label>
+      <input type="range" id="lead" min="0" max="5" step="1" value="3" aria-describedby="leadval">
+      <span class="leadval" id="leadval"></span></div>
+    <div class="ctl"><label for="layer">Map shows</label><select id="layer">
+      <option value="median">Forecast yield</option>
+      <option value="dev">Forecast vs official (%)</option>
+      <option value="width">Range width (80 %)</option>
+      <option value="water">Water supply (use / demand)</option>
+    </select></div>
+  </div>
+  <div class="grid">
+    <div class="card mapbox">
+      <svg id="map" viewBox="0 0 560 720" role="img" aria-label="Map of German districts coloured by the selected value"></svg>
+      <div class="tip" id="tip"></div>
+      <div class="legend" id="legend"></div>
+      <p class="note" id="mapnote"></p>
+    </div>
+    <div class="card" id="panel" aria-live="polite"></div>
+  </div>
+</section>
+
+<section id="page-accuracy" hidden>
+  <div class="prose" style="padding-block:14px">
+    <h2>How accurate is the forecast?</h2>
+    <p>All numbers below come from the test years 2018-2025, which the model never saw during fitting, and from three federal states that were held out completely (Schleswig-Holstein, Baden-Wuerttemberg, Brandenburg). The JRC MARS forecast and the Destatis harvest reporters are compared at the same date: for each of their publications only our forecast from that date or earlier is used. Errors are in % of the average yield (RMSE); lower is better.</p>
+  </div>
+  <div class="card"><h3>Germany: v10 vs JRC MARS vs last year's yield</h3><div class="tbl" id="tbl-mars"></div>
+    <p class="note">Win = our error lower than MARS. Grain maize: official district data only to 2021 (4 years).</p></div>
+  <div class="card" style="margin-top:16px"><h3>vs Destatis harvest reporters</h3><div class="tbl" id="tbl-destatis"></div>
+    <p class="note">Destatis publishes its June estimate (wheat) at the end of July; the July/August and August/September figures come after the harvest and are close to measurements.</p></div>
+  <div class="card" style="margin-top:16px"><h3>Districts: v10 vs previous model v9 (typical error, t/ha)</h3><div class="tbl" id="tbl-dist"></div></div>
+</section>
+
+<section id="page-method" hidden>
+  <div class="prose card" style="margin-top:14px">
+    <h2>Method</h2>
+    <p><b>Model.</b> A daily crop growth model (light interception, temperature, soil water, nitrogen, heat and wetness effects, breeding progress) runs for every district from the observed sowing date. A learned correction and a data-driven gradient-boosting model refine it; satellite greenness (MODIS NDVI over cropland) enters from 2000. During the season, the weather after the forecast date is replaced by each of 39 past seasons (1979-2017), which gives the forecast distribution.</p>
+    <p><b>v10 additions.</b> An annual district level update learned from the model's own past errors (district yields published two years earlier), a national 3-year update for grain maize, and a barley model refitted every 3 years to follow fast breeding progress. Ranges combine weather uncertainty with a shared year-wide error and a local error; for barley and grain maize the error size adapts to the misses of recent years.</p>
+    <p><b>Data.</b> DWD HYRAS weather, DWD stations, CM SAF SARAH-3 sunlight, BGR soils, DWD phenology, Destatis district yields (regional database 41241) and Duden et al. 2024, fertiliser statistics, MODIS MOD13Q1, ESA WorldCover. Benchmarks: JRC MARS Bulletins 2009-2026, Destatis Fachserie 3 Reihe 3.2.1 2005-2022.</p>
+    <p><b>Validation.</b> Every design choice was made on the training years 1979-2017 by forward validation (fit up to a year, predict the years after), mostly in two separate periods, with the rules written down before results were seen. The test years were looked at once, after freezing the model with file fingerprints. The frozen predictions for 2026 will be checked against the official 2026 district yields in spring 2027.</p>
+    <p><b>Known limitations.</b> The model is still somewhat too optimistic in very dry and hot summers, above all for maize. Barley before harvest is behind MARS. At state level the Destatis harvest reporters, who observe the crop, are better. Grain maize district data end in 2021. MODIS satellites are retiring; crop-specific Sentinel-2 greenness is being added (next version). This platform shows districts; field and 10 m maps are phase 2.</p>
+  </div>
+</section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script>
+const S = { crop: "winter_wheat", year: "2022", lead: 3, layer: "median", sel: "DE", data: {} };
+const LEADS = ["12", "8", "6", "4", "2", "0"];
+let META, GEO, ACC, NDVI;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmt = (v, d = 2) => v == null || !isFinite(v) ? "–" : (+v).toFixed(d);
+const doyDate = (y, doy) => { const d = new Date(Date.UTC(+y, 0, 1)); d.setUTCDate(doy); return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }); };
+const getJSON = f => fetch("data/" + f).then(r => { if (!r.ok) throw new Error(f); return r.json(); });
+
+async function cropData(c) {
+  if (!S.data[c]) S.data[c] = { fc: await getJSON(`fc_${c}.json`), water: await getJSON(`water_${c}.json`).catch(() => ({})) };
+  return S.data[c];
+}
+function rowFor(code, year = S.year, lead = LEADS[S.lead]) {
+  const fc = S.data[S.crop].fc[year]; if (!fc) return null;
+  const L = fc[lead] || fc["0"]; return L ? L[code] : null;
+}
+function valueFor(code) {
+  const r = rowFor(code); if (!r) return null;
+  if (S.layer === "median") return r[0];
+  if (S.layer === "dev") return r[3] != null && r[0] != null ? 100 * (r[0] - r[3]) / r[3] : null;
+  if (S.layer === "width") return r[1] != null ? r[2] - r[1] : null;
+  if (S.layer === "water") { const w = (S.data[S.crop].water[S.year] || {})[code]; return w ? w[2] : null; }
+}
+
+function drawMap() {
+  const svg = d3.select("#map"), W = 560, H = 720;
+  const proj = d3.geoMercator().fitSize([W, H], GEO), path = d3.geoPath(proj);
+  const vals = GEO.features.map(f => valueFor(f.properties.code)).filter(v => v != null);
+  let scale, domain;
+  const lo = d3.quantile(vals.slice().sort(d3.ascending), 0.03), hi = d3.quantile(vals.slice().sort(d3.ascending), 0.97);
+  // standard agronomic scales: yield red-yellow-green (as in common yield-mapping software),
+  // forecast vs official blue (too low) - white - red (too high), water red (stressed) - blue, range width one hue
+  if (S.layer === "dev") { const m = Math.max(5, Math.abs(lo || 0), Math.abs(hi || 0)); domain = [-m, m]; scale = d3.scaleDiverging(t => d3.interpolateRdBu(1 - t)).domain([-m, 0, m]); }
+  else if (S.layer === "water") { domain = [Math.min(lo ?? .5, .99), 1]; scale = d3.scaleSequential(d3.interpolateRdYlBu).domain(domain); }
+  else if (S.layer === "width") { domain = [lo ?? 0, hi ?? 1]; scale = d3.scaleSequential(d3.interpolatePurples).domain([domain[0] - (domain[1] - domain[0]) * 0.3, domain[1]]); }
+  else { domain = [lo ?? 0, hi ?? 1]; scale = d3.scaleSequential(d3.interpolateRdYlGn).domain(domain); }
+  const sel = svg.selectAll("path.d").data(GEO.features, f => f.properties.code);
+  sel.join("path").attr("class", f => "d" + (f.properties.code === S.sel ? " sel" : "")).attr("d", path)
+    .attr("fill", f => { const v = valueFor(f.properties.code); return v == null ? css("--line") : scale(v); })
+    .on("mousemove", (e, f) => { const t = document.getElementById("tip"), v = valueFor(f.properties.code), r = rowFor(f.properties.code);
+      t.style.display = "block"; const b = document.querySelector(".mapbox").getBoundingClientRect();
+      t.style.left = (e.clientX - b.left + 12) + "px"; t.style.top = (e.clientY - b.top + 12) + "px";
+      t.textContent = `${f.properties.name}: ${r ? fmt(r[0]) + " t/ha" : "no forecast"}${r && r[3] != null ? " · official " + fmt(r[3]) : ""}`; })
+    .on("mouseleave", () => document.getElementById("tip").style.display = "none")
+    .on("click", (e, f) => { S.sel = f.properties.code; drawMap(); drawPanel(); });
+  const unit = { median: "t/ha", dev: "% vs official", width: "t/ha", water: "use / demand" }[S.layer];
+  const stops = d3.range(0, 1.01, .1).map(t => scale(domain[0] + t * (domain[1] - domain[0])));
+  document.getElementById("legend").innerHTML = `<span>${fmt(domain[0], S.layer === "dev" ? 0 : 2)}</span><span class="bar" style="background:linear-gradient(90deg,${stops.join(",")})"></span><span>${fmt(domain[1], S.layer === "dev" ? 0 : 2)} ${unit}</span>`;
+  const y = S.year, c = META.crops[S.crop];
+  document.getElementById("mapnote").textContent = y === "2026"
+    ? "2026: frozen end-of-season prediction; checked against official district yields in spring 2027."
+    : `Forecast made on ${doyDate(y, c.leads[LEADS[S.lead]])} ${y}, ${LEADS[S.lead]} weeks before the typical harvest. Grey: no forecast or no official yield.`;
+}
+
+function fanChart(code) {
+  const pts = LEADS.map(l => { const r = rowFor(code, S.year, l); return r ? { l: +l, m: r[0], lo: r[1], hi: r[2], o: r[3] } : null; }).filter(Boolean);
+  if (pts.length < 2) return "";
+  const W = 460, H = 190, L = 40, R = 12, T = 12, B = 28;
+  const ys = pts.flatMap(p => [p.lo, p.hi, p.m, p.o]).filter(v => v != null && isFinite(v));
+  const y = d3.scaleLinear().domain([d3.min(ys) * 0.97, d3.max(ys) * 1.03]).nice().range([H - B, T]);
+  const x = d3.scaleLinear().domain([12, 0]).range([L, W - R]);
+  const area = d3.area().x(p => x(p.l)).y0(p => y(p.lo)).y1(p => y(p.hi));
+  const line = d3.line().x(p => x(p.l)).y(p => y(p.m));
+  const off = pts[0].o;
+  const ticks = y.ticks(4).map(t => `<line class="ax" x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}"/><text x="${L - 6}" y="${y(t) + 4}" text-anchor="end">${t}</text>`).join("");
+  const xt = LEADS.map(l => `<text x="${x(+l)}" y="${H - 8}" text-anchor="middle">${l === "0" ? "harvest" : "−" + l + " wk"}</text>`).join("");
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Forecast and 80 % range through the season">${ticks}${xt}
+    ${pts[0].lo != null ? `<path d="${area(pts)}" fill="${css("--accent")}" fill-opacity=".18"/>` : ""}
+    <path d="${line(pts)}" fill="none" stroke="${css("--accent")}" stroke-width="2.2"/>
+    ${pts.map(p => `<circle cx="${x(p.l)}" cy="${y(p.m)}" r="3" fill="${css("--accent")}"><title>${p.l} weeks before harvest: ${fmt(p.m)} t/ha (80 %: ${fmt(p.lo)}–${fmt(p.hi)})</title></circle>`).join("")}
+    ${off != null ? `<line x1="${L}" x2="${W - R}" y1="${y(off)}" y2="${y(off)}" stroke="${css("--ink")}" stroke-dasharray="4 3"/><text x="${W - R}" y="${y(off) - 5}" text-anchor="end">official ${fmt(off)}</text>` : ""}
+  </svg>`;
+}
+
+function ndviChart(code) {
+  if (!NDVI || code.length !== 5) return "";
+  const cur = NDVI[S.year], years = Object.keys(NDVI);
+  if (!cur || !cur.v[code]) return "";
+  const W = 460, H = 150, L = 34, R = 10, T = 10, B = 24;
+  const doy = s => { const [m, d] = s.split("-").map(Number); return (Date.UTC(2021, m - 1, d) - Date.UTC(2021, 0, 1)) / 864e5; };
+  const x = d3.scaleLinear().domain([30, 300]).range([L, W - R]), y = d3.scaleLinear().domain([0, 0.95]).range([H - B, T]);
+  const line = d3.line().defined(p => p[1] != null).x(p => x(p[0])).y(p => y(p[1]));
+  const others = years.filter(k => k !== S.year && NDVI[k].v[code]).map(k => NDVI[k].dates.map((s, i) => [doy(s), NDVI[k].v[code][i]]));
+  const now = cur.dates.map((s, i) => [doy(s), cur.v[code][i]]);
+  const mt = [["Feb", 32], ["Apr", 91], ["Jun", 152], ["Aug", 213], ["Oct", 274]].map(([n, d]) => `<text x="${x(d)}" y="${H - 6}" text-anchor="middle">${n}</text>`).join("");
+  const yt = [0.2, 0.4, 0.6, 0.8].map(t => `<line class="ax" x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}"/><text x="${L - 5}" y="${y(t) + 4}" text-anchor="end">${t}</text>`).join("");
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Satellite greenness of cropland in this district">${yt}${mt}
+    ${others.map(o => `<path d="${line(o)}" fill="none" stroke="${css("--muted")}" stroke-opacity=".3" stroke-width="1"/>`).join("")}
+    <path d="${line(now)}" fill="none" stroke="${css("--good")}" stroke-width="2.2"/></svg>`;
+}
+
+function drawPanel() {
+  const code = S.sel, c = META.crops[S.crop];
+  const name = code === "DE" ? "Germany" : code.length === 2 ? META.states[code] : META.names[code] || code;
+  const r = rowFor(code), st = code.length === 5 ? rowFor(code.slice(0, 2)) : null, de = rowFor("DE");
+  const w = code.length === 5 ? (S.data[S.crop].water[S.year] || {})[code] : null;
+  const dev = r && r[3] != null ? 100 * (r[0] - r[3]) / r[3] : null;
+  const inside = r && r[1] != null && r[3] != null ? (r[3] >= r[1] && r[3] <= r[2]) : null;
+  let h = `<h2>${name}</h2><div class="note">${c.label} · season ${S.year}${S.year !== "2026" ? " · forecast " + LEADS[S.lead] + " weeks before harvest" : ""}</div>`;
+  h += `<div class="kpis">
+    <div class="kpi"><div class="k">Forecast</div><div class="v">${r ? fmt(r[0]) : "–"}</div><div class="s">${r && r[1] != null ? "80 %: " + fmt(r[1]) + "–" + fmt(r[2]) : "t/ha"}</div></div>
+    <div class="kpi"><div class="k">Official</div><div class="v">${r && r[3] != null ? fmt(r[3]) : "–"}</div><div class="s">${dev != null ? (dev > 0 ? "+" : "") + fmt(dev, 1) + " % error" : S.year === "2026" ? "spring 2027" : "not published"}</div></div>
+    <div class="kpi"><div class="k">${code.length === 5 ? "State · Germany" : "Germany"}</div><div class="v">${code.length === 5 ? fmt(st && st[0]) : fmt(de && de[0])}</div><div class="s">${code.length === 5 ? "Germany " + fmt(de && de[0]) : "t/ha"}</div></div>
+  </div>`;
+  if (inside != null) h += `<p><span class="pill ${inside ? "good" : "bad"}">${inside ? "official yield inside the 80 % range" : "official yield outside the 80 % range"}</span></p>`;
+  if (S.year !== "2026") h += `<h3>Through the season</h3>${fanChart(code)}<p class="note">Shaded: 80 % range. Dashed: official yield.</p>`;
+  if (w) h += `<h3>Water (simulated season)</h3><p>Crop water use <b>${fmt(w[0], 0)} mm</b> of a demand of <b>${fmt(w[1], 0)} mm</b> · supply ratio <b>${fmt(w[2])}</b>${w[2] < 0.85 ? ' <span class="pill bad">water-limited</span>' : ""}</p>`;
+  const nd = ndviChart(code);
+  if (nd) h += `<h3>Satellite greenness (MODIS NDVI, cropland)</h3>${nd}<p class="note">Green: ${S.year}. Grey: other seasons 2018-2026.</p>`;
+  if (code.length === 5) h += `<p><button id="toState">Show ${META.states[code.slice(0, 2)]}</button> <button id="toDE">Show Germany</button></p>`;
+  else if (code !== "DE") h += `<p><button id="toDE">Show Germany</button></p>`;
+  const p = document.getElementById("panel"); p.innerHTML = h;
+  const s1 = document.getElementById("toState"), s2 = document.getElementById("toDE");
+  if (s1) s1.onclick = () => { S.sel = code.slice(0, 2); drawMap(); drawPanel(); };
+  if (s2) s2.onclick = () => { S.sel = "DE"; drawMap(); drawPanel(); };
+}
+
+function setLeadLabel() {
+  const c = META.crops[S.crop], el = document.getElementById("leadval"), inp = document.getElementById("lead");
+  const only = S.year === "2026"; inp.disabled = only;
+  el.textContent = only ? "end of season (2026)" : `${doyDate(S.year, c.leads[LEADS[S.lead]])} · ${LEADS[S.lead] === "0" ? "at typical harvest" : LEADS[S.lead] + " weeks before harvest"}`;
+}
+async function refresh() {
+  await cropData(S.crop);
+  const years = META.crops[S.crop].years, ys = document.getElementById("year");
+  if (!years.includes(S.year)) S.year = years.includes("2022") ? "2022" : years[0];
+  ys.innerHTML = years.map(y => `<option ${y === S.year ? "selected" : ""}>${y}</option>`).join("");
+  setLeadLabel(); drawMap(); drawPanel();
+}
+
+function accuracyTables() {
+  const B = ACC.benchmarks, lab = c => META.crops[c] ? META.crops[c].label : c;
+  const mon = { "05": "May", "06": "Jun", "07": "Jul", "08": "Aug", "09": "Sep", "10": "Oct" };
+  const mars = B.filter(b => b.official.startsWith("mars") && b.level === "national" && mon[b.official.slice(-2)]);
+  const order = Object.keys(META.crops);
+  mars.sort((a, b) => order.indexOf(a.crop) - order.indexOf(b.crop) || a.official.localeCompare(b.official));
+  document.getElementById("tbl-mars").innerHTML = `<table><thead><tr><th>Crop</th><th>Month</th><th>Years</th><th>v10</th><th>MARS</th><th>Last year</th><th></th></tr></thead><tbody>${
+    mars.map(b => `<tr><td>${lab(b.crop)}</td><td>${mon[b.official.slice(-2)]}</td><td>${b.n}</td><td class="${b.ours_err < b.official_err ? "win" : ""}">${fmt(b.ours_err, 1)} %</td><td>${fmt(b.official_err, 1)} %</td><td>${fmt(b.lastyear_err, 1)} %</td><td>${b.ours_err < b.official_err ? '<span class="pill good">win</span>' : '<span class="pill bad">behind</span>'}</td></tr>`).join("")}</tbody></table>`;
+  const des = B.filter(b => b.official.startsWith("destatis") && b.official.endsWith("_pub"));
+  const dn = { destatis_jun_pub: "June estimate", destatis_jul_aug_pub: "Jul/Aug result", destatis_aug_sep_pub: "Aug/Sep result" };
+  document.getElementById("tbl-destatis").innerHTML = `<table><thead><tr><th>Crop</th><th>Figure</th><th>Level</th><th>n</th><th>v10</th><th>Destatis</th></tr></thead><tbody>${
+    des.map(b => `<tr><td>${lab(b.crop)}</td><td>${dn[b.official] || b.official}</td><td>${b.level}</td><td>${b.n}</td><td class="${b.ours_err < b.official_err ? "win" : ""}">${fmt(b.ours_err, 1)} %</td><td>${fmt(b.official_err, 1)} %</td></tr>`).join("")}</tbody></table>`;
+  const D = ACC.district_v10_vs_v9.filter(d => d.lead === 4);
+  document.getElementById("tbl-dist").innerHTML = `<table><thead><tr><th>Crop</th><th>Districts</th><th>n</th><th>v9</th><th>v10</th><th>Change</th></tr></thead><tbody>${
+    D.map(d => `<tr><td>${lab(d.crop)}</td><td>${d.role === "test_years" ? "known" : "held-out states"}</td><td>${d.n}</td><td>${fmt(d.rmse_v9)}</td><td>${fmt(d.rmse_v10)}</td><td class="win">${fmt(d.change_pct, 1)} %</td></tr>`).join("")}</tbody></table><p class="note">Forecast 4 weeks before the typical harvest; the other forecast dates show the same pattern.</p>`;
+}
+
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach(x => x.setAttribute("aria-selected", x === b));
+  ["explore", "accuracy", "method"].forEach(p => document.getElementById("page-" + p).hidden = p !== b.dataset.page);
+});
+(async () => {
+  [META, GEO, ACC] = await Promise.all([getJSON("meta.json"), getJSON("districts.geojson"), getJSON("accuracy.json")]);
+  NDVI = await getJSON("ndvi.json").catch(() => null);
+  const cs = document.getElementById("crop");
+  cs.innerHTML = Object.entries(META.crops).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join("");
+  cs.onchange = e => { S.crop = e.target.value; refresh(); };
+  document.getElementById("year").onchange = e => { S.year = e.target.value; refresh(); };
+  document.getElementById("lead").oninput = e => { S.lead = +e.target.value; setLeadLabel(); drawMap(); drawPanel(); };
+  document.getElementById("layer").onchange = e => { S.layer = e.target.value; drawMap(); };
+  accuracyTables();
+  await refresh();
+})().catch(err => { document.getElementById("panel").textContent = "Could not load the data: " + err.message; });
+</script>

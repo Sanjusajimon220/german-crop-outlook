@@ -1,0 +1,9 @@
+data/
+*.npz
+*.nc
+*.tif
+*.zip
+*.pdf
+__pycache__/
+*.pyc
+.claude/
