@@ -5,7 +5,7 @@ potato, from twelve weeks before the harvest to the harvest, with 80 % ranges. A
 [Groundtruth-earth](https://groundtruth-earth.netlify.app/) project: open data only, data gaps shown honestly,
 reproducible code.
 
-**Live platform:** https://sanjusajimon220.github.io/german-crop-outlook/ (served from `docs/`)
+**Live platform:** https://groundtruth-earth.netlify.app/crop-outlook/ (also servable from `docs/` via GitHub Pages)
 
 ## What it does
 - A daily crop growth model (light, temperature, soil water, nitrogen, heat, wetness, breeding progress) runs for
