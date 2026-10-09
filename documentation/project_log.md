@@ -1238,3 +1238,26 @@ Evaluation: the test years 2018-2025 were already looked at for v10 -> any v11 r
 - Potato: adaptive ranges district 0.746->0.783 coverage, iscore better district/state but national 14.313->14.318
   (worse) -> static by rule; potato fusion (Jul, 6 yrs) not adopted.
 - 14:44 Platform v1 (phase 1, district, v10 + final ranges) published as private artifact https://claude.ai/artifact/J74PjkEiwkrw6TQakiNkr1 (platform/index.html + platform/data via export_platform.py).
+- 14:51 Code + platform pushed to https://github.com/Sanjusajimon220/german-crop-outlook (public, owner-created repo); Pages to be enabled by owner (main /docs).
+- 15:10 Groundtruth site: complete deploy folder D:\groundtruth-earth-site (owner's pages + home page, fire-spread maps, favicon, og-image taken from the live site; new story page crop-outlook-germany.html from the site template; investigations card + Farming filter; platform in crop-outlook/). Link check: 17 pages, no broken local links. Deploy (drag and drop on Netlify) is the owner's action.
+- 16:20 Platform: richer map (layers official yield, water use mm, water demand mm, MODIS greenness for all
+  districts; detailed tooltip; 2026 water ratio exported; grey explained = no official district statistic).
+  Site header no longer sticky (owner request). Copied to the site folder and repo docs, artifact v3.
+
+## v11.1 PRE-REGISTRATION: crop-specific Sentinel-2 district features (written 2026-10-09 16:25, before any feature-vs-yield result)
+- Data: S2 L2A NDVI, 25 interior cells per district x crop (CLMS crop types), Apr-Sep, cloud <= 60 %, 2019-2023
+  (2022/2023 complete; 2019-2021 running). Crops: wheat -> winter_wheat, barley -> winter_barley,
+  maize -> grain_maize and silage_maize, potatoes -> potato. Composites: dekad median of valid dates.
+- Features at each forecast date (only dekads ending before the date): peak NDVI so far, mean of the last 3
+  valid dekads, integral of max(NDVI - 0.2, 0) over dekads (missing dekads linearly interpolated, none after
+  the last valid one). Each feature also as anomaly vs the state mean of the same crop and year
+  (within-year spatial signal). District x crop rows need >= 5 cells and >= 4 valid dekads.
+- Target: v10 district residual (official - v10 median) per crop and lead (ranges_v10_final).
+- Model: ridge on standardised features (alpha = 10, fixed), correction applied with 50 % shrinkage.
+- Evaluation: leave-one-year-out over the S2 years (2019-2023); the three held-out states (01, 08, 12)
+  are also excluded from fitting in every fold and scored separately.
+- Adoption per crop x lead: district RMSE lower on average by >= 3 % AND lower in >= 4 of 5 left-out years
+  (>= 3 of 4 if a year is missing), held-out states not worse, and state / national area-weighted error
+  not worse on average.
+- CAVEAT (disclosed): 2019-2023 are v10 test years already looked at; any adoption is provisional. The
+  clean test is 2026+ and needs crop maps for 2024+ (DLR 2024 / own classification), not yet available.
