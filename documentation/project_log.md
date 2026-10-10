@@ -1261,3 +1261,33 @@ Evaluation: the test years 2018-2025 were already looked at for v10 -> any v11 r
   not worse on average.
 - CAVEAT (disclosed): 2019-2023 are v10 test years already looked at; any adoption is provisional. The
   clean test is 2026+ and needs crop maps for 2024+ (DLR 2024 / own classification), not yet available.
+- 16:55 Overnight plan (owner: "use full night, finish all tasks"). (1) S2 2019-2021 downloads -> pre-registered
+  v11.1 test (s2_eval.py, automatic). (2) LST combination test resumed with PRIORITY ORDER (no rule change):
+  'physvar=lst' alone for all crops, cut 2008 and cut 2002, two parallel streams (run_lst_core.sh); same
+  two-period adoption rule as the combined test (eval_combined.py / eval_select.py). Remaining LST
+  combinations only if LST alone passes. (3) S2 -> MODIS bridge (satellite vs satellite, no yields).
+- 17:10 S2 -> MODIS bridge first look (s2_bridge.py; satellite vs satellite, no yields; LOYO; 2022/2023 complete,
+  2020/2021 only 2 states): r 0.66-0.82, RMSE 0.06-0.08 NDVI, within-date r 0.39-0.60. Usable but weaker than
+  hoped (MODIS cropland also contains rapeseed / grassland not sampled). Rerun with all years after downloads.
+- 17:25 LST ALONE result (two-period rule; A = fit <=2002 scored 2003-08, B = fit <=2008 scored 2009-17):
+  wheat A +1.5 % / B -0.8 %; barley +0.9 / +2.2; grain maize +1.4 / +1.5; silage +2.0 / +1.8; potato -4.7 / -0.1
+  but the stress gap worsens in B (1.75 -> 1.85). NO crop passes -> LST NOT adopted (v10.1 candidate closed).
+  By the plan, the remaining LST combinations are not run. Canopy temperature stays out of the model.
+
+## 2026-10-10 - v11.1 Sentinel-2 test result (run once, 02:20, exactly as pre-registered)
+- Data complete: S2 2019-2023, all 16 states (2019 done 02:13, no retries); features per crop-year ~700-2100 rows.
+- ADOPTED by the rule (provisional, years already seen in the v10 test): winter wheat lead 6 (-6.0 % district
+  RMSE, 4/5 years, held-out 0.980 -> 0.921) and lead 12 (-7.6 %, 4/5, held-out 1.242 -> 1.137, state 0.78 -> 0.58);
+  winter barley lead 8 (-5.9 %, 4/5); silage maize lead 4 (-3.1 %, 4/5) and lead 6 (-6.1 %, 5/5).
+- NOT adopted: potato (all leads worse, -0.9 to -2.7 %); wheat leads 0/2 (no gain), 4 (+4.7 % but 3/5 years),
+  8 (+2.4 % < 3 %); barley 0-6 (state level worse); silage 0/2/8/12.
+- Grain maize NOT TESTABLE: official district yields in the v10 file only 2018-2021 -> 3 S2 years (< 4).
+- Pattern: S2 crop greenness helps EARLY in the season (6-12 weeks before harvest), not close to harvest where
+  the weather + MODIS model already holds the information. Potato samples are too small/noisy.
+- National errors over 5 years are noisy (5 values); not used beyond the "not worse" check.
+- Bridge (S2 -> MODIS, all years, LOYO): r 0.60-0.83, RMSE 0.068-0.075, within-date r 0.47-0.62. S2 can
+  carry the MODIS signal only partly; a live MODIS replacement needs a better land-cover match (add rapeseed /
+  grassland samples) - open.
+- Next (needs owner decision): crop maps 2024-2026 (DLR 2024 / own classification, new S2 credits) to apply the
+  adopted corrections live and in the clean 2026 check; implement v11.1 = v10 + S2 correction at the adopted
+  crop x lead cells.
