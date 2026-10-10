@@ -1365,7 +1365,7 @@ Evaluation: the test years 2018-2025 were already looked at for v10 -> any v11 r
   as a documented 2019-2023 backtest result only, until refitted on DLR-based samples with more cells.
   The per-cell runs continue as planned (owner: no changes): 2024 test (item 1) and classification check
   (item 2) are still run and reported, as information for that refit.
-- 16:20 v11.1 FINAL FROZEN (build_v11_1_final.py; LIVE_S2 = False after the failed overlap check):
+- 16:05 v11.1 FINAL FROZEN (build_v11_1_final.py; LIVE_S2 = False after the failed overlap check):
   release = v10 medians + state-year ranges at state level (ranges_v11i_stateyr_final, 2018-2026) + v10 in-season
   forecasts 2026 at all six leads. 2026 frozen: check2026/v11_1_2026_frozen.csv (12,126 rows), md5
   dc77b57f21e124d2ef9e752ba43b4c08 (frozen_2026_v11_1_md5.txt). Checks: 2018-2025 medians identical to v10
