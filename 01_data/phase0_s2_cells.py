@@ -27,6 +27,14 @@ from phase0_s2_district_sample import OUT, dlr_cty100, retry
 MAIN = {11: 25, 12: 25, 30: 25, 50: 25}
 OTHER = (13, 14, 21, 22, 23, 40, 41, 42, 60, 71, 72, 84)
 N_OTHER = 30
+CHUNK = 4000
+
+
+def s2_ndvi(con, bb, year):
+    s2 = con.load_collection("SENTINEL2_L2A", spatial_extent=bb, temporal_extent=[f"{year}-04-01", f"{year}-09-30"],
+                             bands=["B04", "B08", "SCL"], max_cloud_cover=60)
+    scl = s2.band("SCL")
+    return s2.ndvi(nir="B08", red="B04").mask(~((scl == 4) | (scl == 5)))
 
 
 def label(path, xy):
@@ -80,13 +88,28 @@ def main():
                              bands=["B04", "B08", "SCL"], max_cloud_cover=60)
     scl = s2.band("SCL")
     ndvi = s2.ndvi(nir="B08", red="B04").mask(~((scl == 4) | (scl == 5)))
-    agg = ndvi.aggregate_spatial(geometries=json.loads(g.to_json()), reducer="mean")
-    job = retry(lambda: agg.create_job(title=f"vista s2 cells {state} {year}", out_format="CSV"))
-    job.start_and_wait()
-    job.get_results().download_files(os.path.join(OUT, f"cells_{state}_{year}"))
-    dd = job.describe()
-    print("status", dd.get("status"), "credits", dd.get("costs"),
-          "input megapixel", (dd.get("usage") or {}).get("input_pixel", {}).get("value"), flush=True)
+    # large states (Bavaria ~10,000 cells) exceed the request size limit (413) -> parts of <= CHUNK cells
+    outdir = os.path.join(OUT, f"cells_{state}_{year}")
+    parts = []
+    for p0 in range(0, len(g), CHUNK):
+        gp = g.iloc[p0:p0 + CHUNK]
+        pdir = outdir + (f"_part{p0 // CHUNK}" if len(g) > CHUNK else "")
+        if not os.path.exists(os.path.join(pdir, "timeseries.csv")):
+            w_, s_, e_, n_ = gp.total_bounds          # own bounding box per part (cost ~ area loaded)
+            nd = s2_ndvi(con, dict(west=float(w_), south=float(s_), east=float(e_), north=float(n_), crs="EPSG:4326"), year)
+            agg = nd.aggregate_spatial(geometries=json.loads(gp.to_json()), reducer="mean")
+            job = retry(lambda: agg.create_job(title=f"vista s2 cells {state} {year} {p0 // CHUNK}", out_format="CSV"))
+            job.start_and_wait()
+            job.get_results().download_files(pdir)
+            dd = job.describe()
+            print("status", dd.get("status"), "credits", dd.get("costs"),
+                  "input megapixel", (dd.get("usage") or {}).get("input_pixel", {}).get("value"), flush=True)
+        parts.append((p0, pdir))
+    if len(parts) > 1:      # merge parts: feature_index -> global cell index
+        ts = pd.concat([pd.read_csv(os.path.join(pdir, "timeseries.csv")).assign(feature_index=lambda x: x["feature_index"] + p0)
+                        for p0, pdir in parts])
+        os.makedirs(outdir, exist_ok=True)
+        ts.to_csv(os.path.join(outdir, "timeseries.csv"), index=False)
 
 
 if __name__ == "__main__":

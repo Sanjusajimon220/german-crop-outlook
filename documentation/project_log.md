@@ -1374,3 +1374,52 @@ Evaluation: the test years 2018-2025 were already looked at for v10 -> any v11 r
   ranges_v11_1_final additionally holds the 2019-2023 S2 backtest values (documentation, not released).
   Platform switched to v11.1 (2026: all forecast dates). Per-cell S2 runs continue (2024 test + classification
   check tonight, as information for a DLR refit).
+- 18:30 Per-cell runs: Bavaria 2024 failed (413 request too large, ~10,000 cells) -> fix: jobs split into parts of <= 4,000 cells and merged (phase0_s2_cells.py); Bavaria 2024 rerun; follow-up chain run_cells_followup.sh replaces run_v11_1_final.sh (its assembly part was already done).
+
+## 2026-10-10 18:28 - v12 PRE-REGISTRATION (owner: "finish v12 as soon as possible"; DLR 2019-2022 download +
+## ~1,500-2,200 openEO credits approved in that reply). Written before any v12 result.
+A. S2 refit on DLR maps with LARGER samples (fixes the noise found in the overlap check):
+   per year 2019-2023, cells from that year's DLR map (100 m mode, interior), per district up to 100 cells each
+   of winter wheat (11), winter barley (12), maize (30) and 50 potato (50); per-cell S2 NDVI (same S2 settings);
+   district curve = mean over the crop's cells (>= 10 cells). Jobs split by district groups with their own
+   bounding box (cost ~ area, not cell count).
+   A1 district correction: identical model and rule to v11.1 (ridge alpha 10 on the 6 features, 50 % shrink,
+       target v10 district residual, LOYO 2019-2023, held-out states excluded from fitting; adopt per crop x lead:
+       district RMSE -3 % on average, better in >= 4/5 years, held-out not worse, state and national not worse).
+   A2 state correction: target = state residual (area-weighted), features = area-weighted mean of the district
+       features of the state; ridge alpha 10, 50 % shrink, leave-one-year-out; adopt per crop x lead if state
+       RMSE lower on average by >= 3 % and in >= 4/5 years and national not worse. State correction is spread to
+       the districts of the state as the same t/ha shift (only where A1 is not adopted for that cell).
+   Noise check (pass needed before use): split each district's cells into two random halves; feature r between
+       halves >= 0.85 for every adopted crop x lead (if a cell fails, it is not adopted).
+   Test: 2024 (cells from DLR 2024, ~25 per crop, run today) as a one-look out-of-fit year; live 2025/2026 only
+   for crops whose own classification passes its pre-registered check.
+B. Ranges grain maize / potato: per crop and level a scale factor k on the range sd so that coverage on training
+   years is 80 % (k from 2011-2014, checked on 2015-2017 and vice versa; adopt if coverage closer to 80 % and
+   interval score lower in both halves). Applies to all crops if it passes, decided per crop x level.
+C. Same validation discipline: md5 freeze, one look on 2018-2025 / 2024, clean test 2026 (spring 2027).
+- 18:36 v12 B RESULT (ranges_scale.py, training 2011-2017, both directions): ADOPTED winter barley district
+  (k 1.19; coverage 0.68->0.77 and 0.71->0.82, iscore lower both ways) and winter barley national (k 1.63;
+  0.28->0.89, 0.50->0.75, iscore lower). NOT adopted: all other crop x level cells, including grain maize and
+  potato (on training years their ranges are already near 80 %; the test-year shortfall is a shift the training
+  years do not show, so a scale factor is not supported by the rule).
+- 18:36 v12 A sampling started (phase0_s2_big.py / run_s2_big.sh, streams 2023+2021+2019 and 2022+2020; per-part
+  bounding boxes). phase0_s2_cells.py also uses per-part bounding boxes from now on (Bavaria 2024 rerun used the
+  state box for its parts).
+- 20:31 v11.1 item 2 + item 1 RESULTS (run once after a bug fix: an all-empty first-dekad feature crashed the
+  classifier at 20:16; no result had been produced). Classification (trained 2024): leave-state-out F1 wheat
+  0.75, barley 0.79, maize 0.87, potato 0.80; transfer 2024 -> 2023 (16, 03) F1 wheat 0.80, barley 0.66,
+  maize 0.849, potato 0.70; features labelled vs classified r min wheat 0.79, barley 0.47, maize 0.95.
+  PASS rule (F1 >= 0.85 and r >= 0.90): NO crop passes -> own classification not usable for 2025/2026.
+  Item 1, frozen v11.1 S2 correction on 2024 (first out-of-fit year, DLR-labelled cells): district RMSE WORSE in
+  5/5 cells (wheat12 +2.4 %, wheat6 +8.8 %, barley8 +22 %, silage6 +1.1 %, silage4 +0.2 %); mean +6.9 % -> NOT MET.
+  This confirms the overlap-check decision: the 2019-2023 backtest gain did not transfer. Not released (unchanged).
+
+## 2026-10-11 01:03 - Owner chose OPTION A: all S2 jobs stopped (local processes and queued/running openEO jobs
+## cancelled). v12 FINAL FROZEN
+- Stopped: v12 A large samples (2023: 4 states, 2022: 4 states done), cells 2025 (12 states) / 2026 (6 states).
+  Credits used on 10/11 Oct ~1,850; ~3,000 left for phase 2 (field level). Data kept on disk for later use.
+- v12 = v11.1 release + barley range scale factors (adopted by the training-year rule, B): district k 1.189,
+  national k 1.627 (build_v12.py -> ranges_v12_final). Medians unchanged (= v10). No S2 correction.
+  2026 frozen: check2026/v12_2026_frozen.csv (12,126 rows), md5 e651e0549ae72578b1a8197dea3c1ba6.
+  Test years 2018-2025, barley coverage (INDICATIVE): district 0.80 -> 0.88, national 0.73 -> 0.83, state 0.80.

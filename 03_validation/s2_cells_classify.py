@@ -23,7 +23,7 @@ from s2_features import LEADS, dekads, feats
 P = os.path.join("data", "processed")
 S2 = os.path.join(P, "s2_district")
 CLS = {11: "wheat", 12: "barley", 30: "maize", 50: "potato"}
-DEK = list(range(100, 275, 10))          # dekad-end doy grid for the classifier (Apr-Sep)
+DEK = list(range(110, 275, 10))          # dekad-end doy grid for the classifier (Apr-Sep)
 MODEL_CROPS = {"wheat": ["winter_wheat"], "barley": ["winter_barley"], "maize": ["grain_maize", "silage_maize"],
                "potato": ["potato"]}
 MIN_CELLS, P_MIN = 5, 0.6

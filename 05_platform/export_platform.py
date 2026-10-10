@@ -48,7 +48,7 @@ def main():
         harvest = int(pd.read_csv(os.path.join(P, f"master_{crop}.csv"), usecols=["doy_harvest"])["doy_harvest"].median())
         fc = {}
         for lead in LEADS:
-            path = os.path.join(P, "ranges_v11i_stateyr_final", f"ranges_{crop}_lead{lead:02d}.csv")   # v11.1 release: v10 medians + state-year ranges, 2018-2026 (S2 backtest not shown)
+            path = os.path.join(P, "ranges_v12_final", f"ranges_{crop}_lead{lead:02d}.csv")   # v12 release: v10 medians + state-year ranges + barley scale, 2018-2026
             if not os.path.exists(path):
                 continue
             r = pd.read_csv(path, dtype={"region": str})
