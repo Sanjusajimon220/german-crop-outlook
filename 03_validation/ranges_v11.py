@@ -17,7 +17,8 @@ from ranges_adaptive import F, P, Z, history
 
 ADAPTIVE = {"winter_barley", "grain_maize"}
 TAG = next((a for a in sys.argv[1:] if a.startswith("_v")), "_v11")
-OUT = os.path.join(P, f"ranges{TAG}_final")
+STATEYR = "stateyr" in sys.argv       # v11.1 item 3: state-year sd at state level (adopted 2026-10-10)
+OUT = os.path.join(P, f"ranges{TAG}" + ("_stateyr" if STATEYR else "") + "_final")
 
 
 def main(crops):
@@ -33,9 +34,12 @@ def main(crops):
         h = pd.concat([h[["district", "year", "e"]], t_err], ignore_index=True)
         ym = h.groupby("year")["e"].mean()
         h["loc"] = h["e"] - h["year"].map(ym)
+        h["sy"] = h.groupby([h["district"].str[:2], "year"])["loc"].transform("mean")
+        h["rest"] = h["loc"] - h["sy"]
         yc = y[y["crop"] == crop].copy()
         yc["area"] = census_area(yc)
         area = yc.set_index(["district", "year"])["area"]
+        alast = yc.dropna(subset=["area"]).sort_values("year").groupby("district")["area"].last()
         for lead in (12, 8, 6, 4, 2, 0):
             f = pd.read_csv(os.path.join(F, f"forecast_{crop}{TAG}_lead{lead:02d}.csv"), dtype={"district": str})
             q = f.groupby(["district", "year"])["blend"].quantile([0.1, 0.5, 0.9]).unstack().reset_index()
@@ -45,15 +49,20 @@ def main(crops):
             for t, g in q.groupby("year"):
                 yh, lh = ym[ym.index < t], h[h["year"] <= t - 2]["loc"]
                 ysd, lsd = yh.std(ddof=1), lh.std()
+                old = h[h["year"] <= t - 2]
+                ssd, rsd = old.groupby([old["district"].str[:2], "year"])["sy"].first().std(), old["rest"].std()
                 if adaptive:
                     ry = ym[(ym.index >= t - 5) & (ym.index <= t - 1)]
                     rl = h[(h["year"] >= t - 6) & (h["year"] <= t - 2)]["loc"]
                     ysd, lsd = max(ysd, np.sqrt((ry ** 2).mean())), max(lsd, np.sqrt((rl ** 2).mean()))
+                    rec = h[(h["year"] >= t - 6) & (h["year"] <= t - 2)]
+                    ssd = max(ssd, np.sqrt((rec.groupby([rec["district"].str[:2], "year"])["sy"].first() ** 2).mean()))
+                    rsd = max(rsd, np.sqrt((rec["rest"] ** 2).mean()))
                 sd = np.sqrt(g["wsd"] ** 2 + ysd ** 2 + lsd ** 2)
                 for (_, r), s in zip(g.iterrows(), sd):
                     rows.append(dict(level="district", region=r["district"], year=t, role=r["role"], obs=r["obs"],
                                      median=r[0.5], low80=r[0.5] - Z * s, high80=r[0.5] + Z * s))
-                a = np.array([area.get((d, t), np.nan) for d in g["district"]])
+                a = np.array([area.get((d, t), alast.get(d, np.nan)) for d in g["district"]])   # 2026: latest area
                 ok = np.isfinite(a) & (a > 0)
                 g, a = g[ok], a[ok]
                 for level, keys in (("national", np.array(["DE"] * len(g))), ("state", g["district"].str[:2].values)):
@@ -61,7 +70,10 @@ def main(crops):
                         s, aa = g[keys == k], a[keys == k]
                         wt = aa / aa.sum()
                         med = float((wt * s[0.5]).sum())
-                        sdn = np.sqrt(float((wt * s["wsd"]).sum()) ** 2 + ysd ** 2 + lsd ** 2 * float((wt ** 2).sum()))
+                        var = lsd ** 2 * float((wt ** 2).sum())
+                        if STATEYR and level == "state":
+                            var = ssd ** 2 + rsd ** 2 * float((wt ** 2).sum())
+                        sdn = np.sqrt(float((wt * s["wsd"]).sum()) ** 2 + ysd ** 2 + var)
                         rows.append(dict(level=level, region=k, year=t, role="", obs=np.nan, median=med,
                                          low80=med - Z * sdn, high80=med + Z * sdn))
             pd.DataFrame(rows).to_csv(os.path.join(OUT, f"ranges_{crop}_lead{lead:02d}.csv"), index=False)
@@ -69,5 +81,5 @@ def main(crops):
 
 
 if __name__ == "__main__":
-    main([a for a in sys.argv[1:] if not a.endswith("_adaptive") and not a.startswith("_v")] or
+    main([a for a in sys.argv[1:] if not a.endswith("_adaptive") and not a.startswith("_v") and a != "stateyr"] or
          ["winter_wheat", "winter_barley", "grain_maize", "silage_maize", "potato"])

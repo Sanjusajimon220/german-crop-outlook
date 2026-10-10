@@ -24,6 +24,24 @@ from shapely.geometry import MultiPolygon, box
 
 OUT = os.path.join("data", "processed", "s2_district")
 CROPS = {1110: "wheat", 1120: "barley", 1130: "maize", 1310: "potato"}
+# 'dlr' option: DLR CropTypes V02 (local file data/raw/croptypes_dlr, CC BY 4.0; winter wheat / winter barley only)
+CROPS_DLR = {11: "wheat", 12: "barley", 30: "maize", 50: "potato"}
+
+
+def dlr_cty100(krs, year, tif):
+    """DLR CropTypes 10 m -> 100 m (mode) for the state's bounding box (EPSG:32632)."""
+    from rasterio.enums import Resampling
+    from rasterio.windows import from_bounds
+    src_f = os.path.join("data", "raw", "croptypes_dlr", f"CROPTYPES_DE_P1Y_{year}_V02.tif")
+    with rasterio.open(src_f) as src:
+        w, s, e, n = krs.to_crs(src.crs).total_bounds
+        win = from_bounds(w, s, e, n, src.transform).round_offsets().round_lengths()
+        h, wd = int(win.height // 10), int(win.width // 10)
+        a = src.read(1, window=win, out_shape=(h, wd), resampling=Resampling.mode)
+        tr = src.window_transform(win) * rasterio.Affine.scale(win.width / wd, win.height / h)
+        prof = dict(driver="GTiff", height=h, width=wd, count=1, dtype=a.dtype, crs=src.crs, transform=tr, compress="deflate")
+    with rasterio.open(tif, "w", **prof) as dst:
+        dst.write(a, 1)
 
 
 def retry(fn, tries=8):
@@ -42,7 +60,12 @@ def main():
     state, year = sys.argv[1], int(sys.argv[2])
     n_cells = int(sys.argv[3]) if len(sys.argv) > 3 else 50
     cheap = "cheap" in sys.argv
-    tag = f"{state}_{year}" + (f"_n{n_cells}_cheap" if cheap else "")
+    dlr = "dlr" in sys.argv
+    crops = CROPS_DLR if dlr else CROPS
+    if dlr and year >= 2024:      # 2026-10-10: replaced by the per-cell design (phase0_s2_cells.py, owner OK)
+        print("skipped: 2024+ DLR sampling replaced by phase0_s2_cells.py", flush=True)
+        return
+    tag = f"{state}_{year}" + (f"_n{n_cells}_cheap" if cheap else "") + ("_dlr" if dlr else "")
     months, cloud = (("04-01", "09-30"), 60) if cheap else (("03-01", "10-31"), 80)
     os.makedirs(OUT, exist_ok=True)
     krs = gpd.read_file("/vsizip/" + os.path.join("data", "raw", "boundaries", "vg250_12-31.utm32s.shape.ebenen.zip")
@@ -52,7 +75,9 @@ def main():
     k4326 = krs.to_crs(4326)
     w, s, e, n = k4326.total_bounds
     bb = dict(west=float(w), south=float(s), east=float(e), north=float(n), crs="EPSG:4326")
-    tif = os.path.join(OUT, f"cty100_{state}_{year}.tif")
+    tif = os.path.join(OUT, f"cty100_{state}_{year}" + ("_dlr" if dlr else "") + ".tif")
+    if dlr and not os.path.exists(tif):
+        dlr_cty100(krs, year, tif)
     if not os.path.exists(tif):
         c = con.load_collection("CLMS_VLCC_CROP_TYPES_EUROPE_10M_YEARLY_V1", spatial_extent=bb,
                                 temporal_extent=[f"{year}-01-01", f"{year}-12-31"], bands=["cty"]).reduce_dimension(dimension="t", reducer="max")
@@ -71,7 +96,7 @@ def main():
     rng = np.random.default_rng(year * 100 + int(state))
     rows = []
     for i, ags in enumerate(kk["AGS"]):
-        for code, name in CROPS.items():
+        for code, name in crops.items():
             r, c = np.where((dist == i) & interior & (a == code))
             if len(r) == 0:
                 continue

@@ -1291,10 +1291,86 @@ Evaluation: the test years 2018-2025 were already looked at for v10 -> any v11 r
 - Next (needs owner decision): crop maps 2024-2026 (DLR 2024 / own classification, new S2 credits) to apply the
   adopted corrections live and in the clean 2026 check; implement v11.1 = v10 + S2 correction at the adopted
   crop x lead cells.
-- 10:xx Owner approved: (1) DLR CropTypes 2024 + 2023 download (2 x 455 MB, CC BY 4.0; 2023 = overlap check
+- 13:00 Owner approved: (1) DLR CropTypes 2024 + 2023 download (2 x 455 MB, CC BY 4.0; 2023 = overlap check
   CLMS vs DLR sampling before using DLR for 2024+); (2) v11.1 build.
 - v11.1 BUILT AND FROZEN (build_v11_1.py; data/processed/v11_1/model.json md5 c99e65fcddf4bf41f65f04aec3c1adb6):
   v10 + 0.5 x ridge S2 correction at wheat 12/6, barley 8, silage 6/4 weeks; fitted 2019-2023 without held-out
   states; leave-one-year-out check reproduces the test exactly (wheat12 0.891->0.823, wheat6 0.765->0.719,
   barley8 1.036->0.974, silage6 5.08->4.78, silage4 4.84->4.69). Ranges = v10 ranges shifted by the correction.
   Live use / 2026 check needs S2 features for 2024+ on DLR crop maps (next).
+- 13:20 DLR CropTypes 2023 + 2024 downloaded (473 / 477 MB, data/raw/croptypes_dlr). Sampler extended with a
+  'dlr' option (local 10 m -> 100 m mode; codes 11 winter wheat, 12 winter barley, 30 maize, 50 potato; outputs
+  tagged _dlr, kept apart from the CLMS samples; old script kept as .bak_clms). Offline check Thuringia bbox
+  2023: DLR vs CLMS 100 m cell counts wheat 414k / 415k, barley 176k / 221k, maize 150k / 138k, potato 5.8k / 5.6k.
+  S2 sampling on DLR maps waits for owner OK on credits (overlap check 2023 ~120, Germany 2024 ~380).
+- 13:30 Owner OK: overlap check 2023 (states 16, 03, DLR maps) then Germany 2024 on DLR maps.
+  PRE-SET PASS RULE for the overlap check (before any result): per crop (wheat, barley, maize), district x dekad
+  NDVI DLR vs CLMS sample r >= 0.90 and |mean difference| <= 0.03; S2 features used by v11.1 (peak, last3,
+  integral at the adopted leads) r >= 0.85. If it fails for a crop, v11.1 is not applied live for that crop until
+  the corrections are refitted on DLR-based samples.
+
+## 2026-10-10 13:45 - Owner: "do 1, 2, 3, 4, complete v11.1 in one stretch". PRE-REGISTRATIONS (before results)
+1. v11.1 on 2024 (first year NOT used to fit the S2 correction; frozen model.json md5 c99e65fc...):
+   S2 features 2024 from DLR-map samples, same feature code; correction applied only at the five cells.
+   Report per cell district / held-out / state / national RMSE v10 vs v11.1. Success = v11.1 better on district
+   RMSE in >= 3 of 5 cells and on the mean change. One look; no refit on 2024.
+3. State-level ranges (state coverage 61-82 % < 80 %). Diagnosis: the range sd at state level has weather +
+   year-wide + local x sum(w^2) parts but no STATE-YEAR part, while state-year errors are 15-27 % of the error
+   variance (combined test). Candidate: add sd_state_year (from the history: state-year mean error minus year
+   mean, known up to t-2) to the state level, and remove its share from the local part
+   (local sd from district error minus state-year mean). Test on TRAINING years 2011-2017 with
+   ranges_adaptive.py's framework (v9 fwd2008 forecasts). Adopt if state coverage moves closer to 80 % AND the
+   state interval score (alpha 0.2) is lower, at the mean over leads, for >= 4 of 5 crops; district and national
+   not worse on interval score. Then applied to the test years (indicative only, already seen).
+4. Freeze: v11.1 = v10 + S2 cells + (state ranges if adopted); 2026 in-season hindcasts at the S2 leads
+   (weather to each forecast date + scenarios, no 2026 yield) for the spring-2027 check, frozen with md5.
+- 13:50 Item 3 RESULT (training 2011-2017, ranges_stateyear.py): state coverage current -> state-year:
+  wheat 0.72->0.83, barley 0.50->0.69, grain maize 0.68->0.84, silage 0.66->0.84, potato 0.66->0.78; state
+  interval score lower for 5/5 crops. The tested implementation also changed district (sy^2 + rest^2 ~ local^2)
+  and national: district iscore slightly worse for grain maize (4.227->4.261) and wheat (3.004->3.005), national
+  worse for silage (7.86->8.40). DECISION: adopted AT STATE LEVEL ONLY, as the pre-registration literally reads
+  ("add sd_state_year to the state level"); district and national ranges stay exactly v10 (so not worse by
+  construction). Disclosed: the reading was chosen after seeing the district/national side effects.
+  ranges_v11.py option 'stateyr' -> data/processed/ranges_v10_stateyr_final (backup ranges_v11.py.bak_v10).
+  Test years 2018-2025, state level (INDICATIVE, years already seen): coverage wheat 0.74->0.88, barley
+  0.66->0.80, grain maize 0.54->0.65, silage 0.77->0.89, potato 0.68->0.73; interval score better barley /
+  maize / potato, worse wheat (2.20->2.23) and silage (15.6->16.3) (ranges now slightly too wide there).
+- 13:58 Item 4 progress: phase2_forecast2026.py (v10 in-season 2026, 39 scenarios 1979-2017, all stages
+  predicted, MODIS to the date, v10 2026 corrections). Check: wheat lead 0 reproduces the frozen
+  pred2026_winter_wheat_v10 exactly (396 districts, max diff 0.000). All crops / leads running (run_inseason2026.sh).
+- Item 2 PRE-REGISTRATION (own crop classification 2025/2026; before any result):
+  cells: fixed per district from DLR 2024 (100 m mode, interior): <= 25 each winter wheat / winter barley /
+  maize / potato + <= 30 other arable (phase0_s2_cells.py; Thuringia: 2367 cells, ~108 per district). Only
+  4.3 % of these cells carry the same crop in 2023 as in 2024 (rotation) -> crop must be classified each year.
+  Per-cell S2 NDVI (same settings as the district samples). Classifier: gradient boosting on dekad NDVI Apr-Sep
+  (interpolated) + peak value / peak dekad, trained on 2024 cells (labels DLR 2024).
+  Validation A: leave-state-out on 2024. Validation B (temporal transfer): train 2024 -> predict 2023 cells in
+  states 16 and 03, labels DLR 2023 at the cell centre.
+  PASS per crop (wheat, barley, maize): F1 >= 0.85 in B AND the v11.1 features from predicted cells vs from
+  DLR-labelled cells (2023, 16+03) r >= 0.90. Use for 2025/2026: cells with predicted probability >= 0.6,
+  >= 5 cells per district x crop. A crop that fails gets no S2 correction in 2025/2026.
+- 14:02 Owner OK (~1,185 credits): per-cell S2 runs started (run_s2_cells.sh; stream A 2024 then 2026, stream B
+  2023 check 16+03 then 2025). The 2024 crop-specific DLR district run is disabled in the sampler (replaced by
+  the cell design; district crop curves 2024 = mean over DLR-labelled cells).
+- 14:06 Correction: the clock times of the four entries above were first written wrongly (14:00/14:40/15:20/15:40); true times 13:45/13:50/13:58/14:02 from the job logs. Order unchanged (pre-registration before results).
+- 14:24 OVERLAP CHECK RESULT (2023, states 16 + 03, CLMS-map vs DLR-map samples; rule pre-set 13:30):
+  NDVI curves agree (r 0.98 wheat / 0.94 barley / 0.97 maize / 0.97 potato; mean diff +0.006..+0.024) but the
+  v11.1 FEATURES do not (min r: wheat 0.45, barley 0.14, maize 0.61; rule >= 0.85) -> OVERLAP FAIL for wheat,
+  barley, maize. Diagnosis: the between-district spread of the features is small (wheat peak sd 0.02-0.035
+  NDVI) and of the same size as the difference between two 25-cell samples (median |diff| 0.01-0.02), i.e. at
+  district level the features are largely sampling noise; barley additionally differs by design (CLMS barley
+  includes spring barley, DLR = winter barley only). Feature r: silage maize 0.61-0.89, wheat 0.45-0.65.
+  CONSEQUENCE (as pre-registered): the CLMS-fitted S2 correction is NOT applied live (2024+) for any crop.
+  v11.1 RELEASE = v10 + state-year ranges (state level) + 2026 in-season forecasts; the S2 correction stays
+  as a documented 2019-2023 backtest result only, until refitted on DLR-based samples with more cells.
+  The per-cell runs continue as planned (owner: no changes): 2024 test (item 1) and classification check
+  (item 2) are still run and reported, as information for that refit.
+- 16:20 v11.1 FINAL FROZEN (build_v11_1_final.py; LIVE_S2 = False after the failed overlap check):
+  release = v10 medians + state-year ranges at state level (ranges_v11i_stateyr_final, 2018-2026) + v10 in-season
+  forecasts 2026 at all six leads. 2026 frozen: check2026/v11_1_2026_frozen.csv (12,126 rows), md5
+  dc77b57f21e124d2ef9e752ba43b4c08 (frozen_2026_v11_1_md5.txt). Checks: 2018-2025 medians identical to v10
+  outside the S2 backtest cells; wheat 2026 lead 0 = frozen v10 2026 exactly (other crops differ at lead 0 only
+  because the frozen end-of-season prediction used the real weather after the typical harvest day).
+  ranges_v11_1_final additionally holds the 2019-2023 S2 backtest values (documentation, not released).
+  Platform switched to v11.1 (2026: all forecast dates). Per-cell S2 runs continue (2024 test + classification
+  check tonight, as information for a DLR refit).

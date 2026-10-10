@@ -74,7 +74,7 @@ section[hidden]{display:none}
 <div class="wrap">
 <header>
   <h1>German Crop Outlook</h1>
-  <span class="tag"><a href="../investigations.html" style="color:var(--accent);text-decoration:none">← Groundtruth-earth</a> · district yield forecasts · model v10 · phase 1 · <a href="https://github.com/Sanjusajimon220/german-crop-outlook" style="color:var(--muted)">code</a></span>
+  <span class="tag"><a href="../investigations.html" style="color:var(--accent);text-decoration:none">← Groundtruth-earth</a> · district yield forecasts · model v11.1 · phase 1 · <a href="https://github.com/Sanjusajimon220/german-crop-outlook" style="color:var(--muted)">code</a></span>
   <nav role="tablist" aria-label="Pages">
     <button role="tab" id="tab-explore" aria-selected="true" data-page="explore">Explorer</button>
     <button role="tab" id="tab-acc" aria-selected="false" data-page="accuracy">Accuracy</button>
@@ -128,6 +128,7 @@ section[hidden]{display:none}
     <h2>Method</h2>
     <p><b>Model.</b> A daily crop growth model (light interception, temperature, soil water, nitrogen, heat and wetness effects, breeding progress) runs for every district from the observed sowing date. A learned correction and a data-driven gradient-boosting model refine it; satellite greenness (MODIS NDVI over cropland) enters from 2000. During the season, the weather after the forecast date is replaced by each of 39 past seasons (1979-2017), which gives the forecast distribution.</p>
     <p><b>v10 additions.</b> An annual district level update learned from the model's own past errors (district yields published two years earlier), a national 3-year update for grain maize, and a barley model refitted every 3 years to follow fast breeding progress. Ranges combine weather uncertainty with a shared year-wide error and a local error; for barley and grain maize the error size adapts to the misses of recent years.</p>
+    <p><b>v11.1 (10 Oct 2026).</b> Same forecasts as v10. State-level ranges now include a state-wide error part (state coverage on training years 69-84 % instead of 50-72 %). 2026 forecasts exist for every forecast date (frozen for the spring-2027 check). A crop-specific Sentinel-2 correction improved early forecasts by 3-8 % in a 2019-2023 backtest but is not used: a check on 2023 showed its district inputs are dominated by sampling noise (25 fields per district). It returns only after a refit on larger samples.</p>
     <p><b>Data.</b> DWD HYRAS weather, DWD stations, CM SAF SARAH-3 sunlight, BGR soils, DWD phenology, Destatis district yields (regional database 41241) and Duden et al. 2024, fertiliser statistics, MODIS MOD13Q1, ESA WorldCover. Benchmarks: JRC MARS Bulletins 2009-2026, Destatis Fachserie 3 Reihe 3.2.1 2005-2022.</p>
     <p><b>Validation.</b> Every design choice was made on the training years 1979-2017 by forward validation (fit up to a year, predict the years after), mostly in two separate periods, with the rules written down before results were seen. The test years were looked at once, after freezing the model with file fingerprints. The frozen predictions for 2026 will be checked against the official 2026 district yields in spring 2027.</p>
     <p><b>Known limitations.</b> The model is still somewhat too optimistic in very dry and hot summers, above all for maize. Barley before harvest is behind MARS. At state level the Destatis harvest reporters, who observe the crop, are better. Grain maize district data end in 2021. MODIS satellites are retiring; crop-specific Sentinel-2 greenness is being added (next version). This platform shows districts; field and 10 m maps are phase 2.</p>
@@ -155,7 +156,7 @@ function rowFor(code, year = S.year, lead = LEADS[S.lead]) {
 }
 function ndviAt(code) {
   const N = NDVI && NDVI[S.year]; if (!N || !N.v[code]) return null;
-  const c = META.crops[S.crop], doy = S.year === "2026" ? 300 : c.leads[LEADS[S.lead]];
+  const c = META.crops[S.crop], doy = c.leads[LEADS[S.lead]];
   let best = null;
   N.dates.forEach((s, i) => { const [m, d] = s.split("-").map(Number); const dd = (Date.UTC(2021, m - 1, d) - Date.UTC(2021, 0, 1)) / 864e5 + 1;
     if (dd <= doy && N.v[code][i] != null) best = N.v[code][i]; });
@@ -206,7 +207,7 @@ function drawMap() {
   document.getElementById("legend").innerHTML = `<span>${fmt(domain[0], S.layer === "dev" ? 0 : 2)}</span><span class="bar" style="background:linear-gradient(90deg,${stops.join(",")})"></span><span>${fmt(domain[1], S.layer === "dev" ? 0 : 2)} ${unit}</span>`;
   const y = S.year, c = META.crops[S.crop];
   document.getElementById("mapnote").textContent = y === "2026"
-    ? "2026: frozen end-of-season prediction; checked against official district yields in spring 2027."
+    ? `2026: frozen in-season forecast made on ${doyDate(y, c.leads[LEADS[S.lead]])} ${y}, ${LEADS[S.lead]} weeks before the typical harvest; checked against official district yields in spring 2027.`
     : `Forecast made on ${doyDate(y, c.leads[LEADS[S.lead]])} ${y}, ${LEADS[S.lead]} weeks before the typical harvest. Grey: no data for this layer. Forecasts exist where Destatis publishes an official district yield for the crop (city districts and small or confidential areas are not published). Water: simulated for the whole season. Greenness: MODIS, latest composite before the forecast date, all cropland.`;
 }
 
@@ -254,7 +255,7 @@ function drawPanel() {
   const w = code.length === 5 ? (S.data[S.crop].water[S.year] || {})[code] : null;
   const dev = r && r[3] != null ? 100 * (r[0] - r[3]) / r[3] : null;
   const inside = r && r[1] != null && r[3] != null ? (r[3] >= r[1] && r[3] <= r[2]) : null;
-  let h = `<h2>${name}</h2><div class="note">${c.label} · season ${S.year}${S.year !== "2026" ? " · forecast " + LEADS[S.lead] + " weeks before harvest" : ""}</div>`;
+  let h = `<h2>${name}</h2><div class="note">${c.label} · season ${S.year} · forecast ${LEADS[S.lead]} weeks before harvest</div>`;
   h += `<div class="kpis">
     <div class="kpi"><div class="k">Forecast</div><div class="v">${r ? fmt(r[0]) : "–"}</div><div class="s">${r && r[1] != null ? "80 %: " + fmt(r[1]) + "–" + fmt(r[2]) : "t/ha"}</div></div>
     <div class="kpi"><div class="k">Official</div><div class="v">${r && r[3] != null ? fmt(r[3]) : "–"}</div><div class="s">${dev != null ? (dev > 0 ? "+" : "") + fmt(dev, 1) + " % error" : S.year === "2026" ? "spring 2027" : "not published"}</div></div>
@@ -277,7 +278,7 @@ function drawPanel() {
 
 function setLeadLabel() {
   const c = META.crops[S.crop], el = document.getElementById("leadval"), inp = document.getElementById("lead");
-  const only = S.year === "2026"; inp.disabled = only;
+  const only = false; inp.disabled = only;
   el.textContent = only ? "end of season (2026)" : `${doyDate(S.year, c.leads[LEADS[S.lead]])} · ${LEADS[S.lead] === "0" ? "at typical harvest" : LEADS[S.lead] + " weeks before harvest"}`;
 }
 async function refresh() {

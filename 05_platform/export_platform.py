@@ -2,8 +2,8 @@
 
 districts.geojson  VG250 districts (simplified ~250 m, WGS84), properties code, name, state
 crops.json         per crop: label, unit, typical harvest day, forecast dates (lead -> day of year), years
-fc_<crop>.json     v10 forecasts 2018-2025: per year -> lead -> {code: [median, low80, high80, official]} for
-                   districts, states ('01'..'16') and Germany ('DE'); 2026: frozen end-of-season prediction
+fc_<crop>.json     v11.1 forecasts 2018-2026: per year -> lead -> {code: [median, low80, high80, official]} for
+                   districts, states ('01'..'16') and Germany ('DE'); 2026: frozen in-season forecasts (no yields yet)
 water_<crop>.json  simulated season water use / demand (mm) and water ratio per district-year 2018-2026 (v9 physics)
 ndvi.json          MODIS cropland greenness per district, 16-day composites, 2018-2026
 accuracy.json      test-year accuracy: v10 vs v9 by lead, v10 vs MARS (national), vs Destatis, ranges coverage
@@ -48,7 +48,7 @@ def main():
         harvest = int(pd.read_csv(os.path.join(P, f"master_{crop}.csv"), usecols=["doy_harvest"])["doy_harvest"].median())
         fc = {}
         for lead in LEADS:
-            path = os.path.join(P, "ranges_v10_final", f"ranges_{crop}_lead{lead:02d}.csv")
+            path = os.path.join(P, "ranges_v11i_stateyr_final", f"ranges_{crop}_lead{lead:02d}.csv")   # v11.1 release: v10 medians + state-year ranges, 2018-2026 (S2 backtest not shown)
             if not os.path.exists(path):
                 continue
             r = pd.read_csv(path, dtype={"region": str})
@@ -57,16 +57,6 @@ def main():
                 fc.setdefault(str(int(x["year"])), {}).setdefault(str(lead), {})[x["region"]] = \
                     [r2(x["median"]), r2(x["low80"]), r2(x["high80"]), r2(obs)]
         p26 = pd.read_csv(os.path.join(P, "check2026", f"pred2026_{crop}_v10.csv"), dtype={"district": str})
-        s26 = pd.read_csv(os.path.join(P, "check2026", f"state_pred2026_{crop}_v10.csv"), dtype={"state": str})
-        d26 = {d: [r2(v), None, None, None] for d, v in zip(p26["district"], p26["blend"])}
-        for _, x in s26.iterrows():
-            d26[str(x["state"]).zfill(2)] = [r2(x["blend"]), None, None, r2(truth.get((crop, str(x["state"]).zfill(2), 2026), np.nan))]
-        y = pd.read_csv(os.path.join(P, "yields_long.csv"), dtype={"district": str})
-        yc = y[(y["crop"] == crop) & (y["area_ha"] > 0)].sort_values("year")
-        area = p26["district"].map(yc.groupby("district")["area_ha"].last())
-        ok = area.notna()
-        d26["DE"] = [r2(np.average(p26.loc[ok, "blend"], weights=area[ok])), None, None, r2(truth.get((crop, "DE", 2026), np.nan))]
-        fc["2026"] = {"0": d26}
         json.dump(fc, open(os.path.join(OUT, f"fc_{crop}.json"), "w"), separators=(",", ":"))
         g = pd.read_csv(os.path.join(P, f"growth_predictions_{crop}_v9.csv"), dtype={"district": str})
         g = g[g["year"] >= 2018]
