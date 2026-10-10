@@ -1291,3 +1291,10 @@ Evaluation: the test years 2018-2025 were already looked at for v10 -> any v11 r
 - Next (needs owner decision): crop maps 2024-2026 (DLR 2024 / own classification, new S2 credits) to apply the
   adopted corrections live and in the clean 2026 check; implement v11.1 = v10 + S2 correction at the adopted
   crop x lead cells.
+- 10:xx Owner approved: (1) DLR CropTypes 2024 + 2023 download (2 x 455 MB, CC BY 4.0; 2023 = overlap check
+  CLMS vs DLR sampling before using DLR for 2024+); (2) v11.1 build.
+- v11.1 BUILT AND FROZEN (build_v11_1.py; data/processed/v11_1/model.json md5 c99e65fcddf4bf41f65f04aec3c1adb6):
+  v10 + 0.5 x ridge S2 correction at wheat 12/6, barley 8, silage 6/4 weeks; fitted 2019-2023 without held-out
+  states; leave-one-year-out check reproduces the test exactly (wheat12 0.891->0.823, wheat6 0.765->0.719,
+  barley8 1.036->0.974, silage6 5.08->4.78, silage4 4.84->4.69). Ranges = v10 ranges shifted by the correction.
+  Live use / 2026 check needs S2 features for 2024+ on DLR crop maps (next).
