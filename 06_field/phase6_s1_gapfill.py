@@ -45,7 +45,8 @@ def add_context(s, year, dist):
     pos = {d: i for i, d in enumerate(dates)}
     s["district"] = s["field_id"].map(dist)
     s = s.dropna(subset=["district"])
-    rain = lambda d, k, lag: w["pr"][pos[d - pd.Timedelta(days=lag)], col[k]] if (d - pd.Timedelta(days=lag)) in pos and k in col else np.nan
+    pr = w["pr"]                     # read once (an npz re-reads the whole array on every access)
+    rain = lambda d, k, lag: pr[pos[d - pd.Timedelta(days=lag)], col[k]] if (d - pd.Timedelta(days=lag)) in pos and k in col else np.nan
     s["rain0"] = [rain(d, k, 0) for d, k in zip(s["date"], s["district"])]
     s["rain1"] = [rain(d, k, 1) for d, k in zip(s["date"], s["district"])]
     head = {k: v[0] for k, v in district_dates(year).items()}
@@ -55,66 +56,61 @@ def add_context(s, year, dist):
     return s
 
 
-def nearest(s1f, d, tol=2):
-    if s1f.empty:
-        return None
-    k = (s1f["date"] - d).abs()
-    i = k.idxmin()
-    return s1f.loc[i] if k[i].days <= tol else None
+def attach_s1(df, s1, tol=2):
+    """Nearest S1 date per row within +-tol days (vectorised merge_asof per field)."""
+    out = pd.merge_asof(df.sort_values("date"), s1[["field_id", "date"] + FEATS].rename(columns={"date": "s1_date"}).sort_values("s1_date"),
+                        left_on="date", right_on="s1_date", by="field_id", direction="nearest",
+                        tolerance=pd.Timedelta(days=tol))
+    return out
 
 
 def main(year, n):
     s1 = s1_table(year, n)
     obs = observations(year)[["field_id", "district", "date", "lai"]]
-    obs = obs[obs["field_id"].isin(s1["field_id"].unique())]
+    obs = obs[obs["field_id"].isin(s1["field_id"].unique())].copy()
     dist = obs.groupby("field_id")["district"].first()
     s1 = add_context(s1, year, dist)
     rng = np.random.default_rng(7)
     fids = rng.permutation(obs["field_id"].unique())
     folds = {f: i % 5 for i, f in enumerate(fids)}
-    # training pairs: every clear S2 date with an S1 date within +-2 days
-    pairs = []
-    for fid, g in obs.groupby("field_id"):
-        sf = s1[s1["field_id"] == fid]
-        for _, o in g.iterrows():
-            r = nearest(sf, o["date"])
-            if r is not None:
-                pairs.append({"field_id": fid, "date": o["date"], "lai": o["lai"], **r[FEATS].to_dict()})
-    pairs = pd.DataFrame(pairs)
-    pairs["fold"] = pairs["field_id"].map(folds)
+    obs["fold"] = obs["field_id"].map(folds)
+    pairs = attach_s1(obs, s1).dropna(subset=["s1_date"])
     print(f"{year}: {obs['field_id'].nunique()} fields, {len(obs)} clear S2 dates, {len(s1)} S1 field-dates, "
           f"{len(pairs)} S1-S2 pairs (+-2 days)", flush=True)
+    # hidden dates: 30 % per field, never the first or last date of a field
+    obs = obs.sort_values(["field_id", "date"]).reset_index(drop=True)
+    obs["hide"] = rng.random(len(obs)) < 0.3
+    first = obs.groupby("field_id")["date"].transform("min") == obs["date"]
+    last = obs.groupby("field_id")["date"].transform("max") == obs["date"]
+    obs.loc[first | last, "hide"] = False
+    obs = obs[obs.groupby("field_id")["date"].transform("size") >= 6]
     rows = []
+    for fid, g in obs.groupby("field_id"):
+        kept, hid = g[~g["hide"]], g[g["hide"]]
+        if hid.empty:
+            continue
+        kd = kept["date"].values.astype("int64")
+        interp = np.interp(hid["date"].values.astype("int64"), kd, kept["lai"].values)
+        idx = np.searchsorted(kd, hid["date"].values.astype("int64"))
+        gap = (kd[idx] - kd[idx - 1]) / 8.64e13
+        rows.append(hid.assign(interp=interp, gap=gap))
+    e = pd.concat(rows)
+    e = attach_s1(e, s1).dropna(subset=["s1_date"])
+    e["s1"] = np.nan
     for k in range(5):
         tr = pairs[pairs["fold"] != k]
         model = HistGradientBoostingRegressor(max_iter=400, learning_rate=0.05, random_state=0).fit(tr[FEATS], tr["lai"])
-        for fid in [f for f, v in folds.items() if v == k]:
-            g = obs[obs["field_id"] == fid].sort_values("date").reset_index(drop=True)
-            if len(g) < 6:
-                continue
-            hide = rng.random(len(g)) < 0.3
-            hide[0] = hide[-1] = False
-            kept = g[~hide]
-            sf = s1[s1["field_id"] == fid]
-            for _, o in g[hide].iterrows():
-                before, after = kept[kept["date"] < o["date"]], kept[kept["date"] > o["date"]]
-                gap = (after["date"].iloc[0] - before["date"].iloc[-1]).days
-                interp = np.interp(o["date"].value, kept["date"].astype("int64"), kept["lai"])
-                r = nearest(sf, o["date"])
-                s1p = float(model.predict(pd.DataFrame([r[FEATS]]))[0]) if r is not None else np.nan
-                rows.append(dict(field_id=fid, date=o["date"], lai=o["lai"], interp=interp, s1=s1p, gap=gap,
-                                 since_heading=r["since_heading"] if r is not None else np.nan))
-    e = pd.DataFrame(rows).dropna(subset=["s1"])
+        m = e["fold"] == k
+        if m.any():
+            e.loc[m, "s1"] = model.predict(e.loc[m, FEATS])
     e["gap_class"] = pd.cut(e["gap"], [0, 15, 30, 400], labels=["<=15 d", "16-30 d", ">30 d"])
     e["phase"] = np.where(e["since_heading"] < 0, "before heading", "after heading")
     rm = lambda x: float(np.sqrt(np.mean(np.square(x))))
     summ = []
-    for key, g in [("all", e)] + [(f"gap {c}", g) for c, g in e.groupby("gap_class", observed=True)] + \
-                  [(p, g) for p, g in e.groupby("phase")]:
+    for key, g in [("all", e)] + [(f"gap {c}", g) for c, g in e.groupby("gap_class", observed=True)] +                   [(p, g) for p, g in e.groupby("phase")]:
         summ.append(dict(subset=key, n=len(g), rmse_s1=rm(g["s1"] - g["lai"]), rmse_interp=rm(g["interp"] - g["lai"]),
                          r_s1=g["s1"].corr(g["lai"]), r_interp=g["interp"].corr(g["lai"])))
     s = pd.DataFrame(summ).round(3)
-    os.makedirs(os.path.join(P, "s1"), exist_ok=True)
     e.to_csv(os.path.join(P, "s1", f"gapfill_check_{year}.csv"), index=False)
     s.to_csv(os.path.join(P, "s1", f"gapfill_summary_{year}.csv"), index=False)
     print(s.to_string(index=False))

@@ -59,33 +59,34 @@ def download(f):
 
 
 def analyse(f, tif):
-    with rasterio.open(tif) as src:
-        a, tr, crs = src.read().astype(float), src.transform, src.crs
-        a[a == src.nodata] = np.nan if src.nodata is not None else a[a == src.nodata]
-    months = ["Apr", "May", "Jun", "Jul"][: a.shape[0]]
-    f = f.to_crs(crs)
-    rows, per = [], []
+    from rasterio.windows import from_bounds
+    src = rasterio.open(tif)
+    months = ["Apr", "May", "Jun", "Jul"][: src.count]
+    f = f.to_crs(src.crs)
+    rows = []
     for _, x in f.iterrows():
         g = x.geometry
-        # fine grid: share of each 10 m pixel inside the field
-        fine_tr = tr * rasterio.Affine.scale(1 / SUB)
-        fine = rasterize([(g, 1)], out_shape=(a.shape[1] * SUB, a.shape[2] * SUB), transform=fine_tr, fill=0, dtype="uint8")
-        share = fine.reshape(a.shape[1], SUB, a.shape[2], SUB).mean(axis=(1, 3))
-        inner20 = rasterize([(g.buffer(-20), 1)], out_shape=a.shape[1:], transform=tr, fill=0, dtype="uint8") \
-            if not g.buffer(-20).is_empty else np.zeros(a.shape[1:], "uint8")
-        inner10 = rasterize([(g.buffer(-10), 1)], out_shape=a.shape[1:], transform=tr, fill=0, dtype="uint8", all_touched=False) \
-            if not g.buffer(-10).is_empty else np.zeros(a.shape[1:], "uint8")
+        win = from_bounds(*g.buffer(30).bounds, transform=src.transform).round_offsets().round_lengths()
+        a = src.read(window=win).astype(float)              # only the field's surroundings
+        if src.nodata is not None and not np.isnan(src.nodata):
+            a[a == src.nodata] = np.nan
+        tr = src.window_transform(win)
+        hgt, wid = a.shape[1:]
+        fine = rasterize([(g, 1)], out_shape=(hgt * SUB, wid * SUB), transform=tr * rasterio.Affine.scale(1 / SUB),
+                         fill=0, dtype="uint8")
+        share = fine.reshape(hgt, SUB, wid, SUB).mean(axis=(1, 3))          # area share of each pixel inside
+        ras = lambda geom: rasterize([(geom, 1)], out_shape=(hgt, wid), transform=tr, fill=0, dtype="uint8")             if not geom.is_empty else np.zeros((hgt, wid), "uint8")
+        inner20, inner10 = ras(g.buffer(-20)), ras(g.buffer(-10))
         touch = share > 0
         rec = {"field_id": int(x["ID"]), "area_ha": x["AREA_HA"], "pixels_all": int(touch.sum()),
                "pixels_edge": int(((share > 0) & (share < 1)).sum()), "pixels_shrunk10": int(inner10.sum())}
         for k, mname in enumerate(months):
             v = a[k]
             ok = touch & np.isfinite(v)
-            core = ok & (inner20 == 1)
-            head = ok & (inner20 == 0)
-            w = share[ok]
-            rec[f"{mname}_weighted_all"] = float(np.sum(v[ok] * w) / np.sum(w)) if w.sum() else np.nan
-            rec[f"{mname}_shrunk10"] = float(np.nanmean(v[(inner10 == 1) & np.isfinite(v)])) if ((inner10 == 1) & np.isfinite(v)).any() else np.nan
+            core, head = ok & (inner20 == 1), ok & (inner20 == 0)
+            sh = ok & (inner10 == 1)
+            rec[f"{mname}_weighted_all"] = float(np.average(v[ok], weights=share[ok])) if ok.any() else np.nan
+            rec[f"{mname}_shrunk10"] = float(v[sh].mean()) if sh.any() else np.nan
             rec[f"{mname}_core"] = float(np.average(v[core], weights=share[core])) if core.any() else np.nan
             rec[f"{mname}_headland"] = float(np.average(v[head], weights=share[head])) if head.any() else np.nan
         rows.append(rec)

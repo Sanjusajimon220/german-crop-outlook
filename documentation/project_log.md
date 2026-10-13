@@ -1488,3 +1488,32 @@ C. Same validation discipline: md5 freeze, one look on 2018-2025 / 2024, clean t
   unchanged). Caveat stated: EC itself under-measures (closure gap), so calibrated values are still conservative.
 - 13:25 WATER CALIBRATION RESULT: leave-one-site-year-out ratios 0.68-0.81 -> 0.86-1.08, closer to 1 in 5 of 5 -> ADOPTED; final k = 1.301 (all 5) applied to field water use and demand (phase5_field_outlook.WATER_K); supply ratio unchanged.
 - 13:46 Field Outlook 2026 (current season): 17,305 fields, 58,725 ha, 31 clear S2 observations per field (median), glad index 97 %; field yield 10/50/90 % 7.78/8.71/9.53 t/ha (anchored to the frozen v12 2026 district forecast); water calibrated (x1.30); median supply 0.98. Map republished with 2021-2026.
+- 2026-10-13 14:01 INCIDENT (my error, disclosed): the S2 runs stopped on 11 Oct 01:00 (option A) were NOT fully stopped. TaskStop
+  ended the parent shells, but the background sub-shells of run_s2_big.sh / run_s2_cells.sh / run_cells_followup.sh
+  kept looping and submitted 61 more openEO jobs (52 finished) until found today; about 1,150 credits used against
+  the owner's decision. All 20 surviving processes killed (none left), 9 queued/running server jobs cancelled. Data
+  produced are kept (v12 large samples: 19 state-years; cells 2025/2026: 27 state files). Lesson: after stopping a
+  background run, check the process list (Win32_Process) and the openEO job list, not only the task status.
+- 14:14 EDGES RESULT (phase6_pixels_edges.py; 50 wheat fields 2025, monthly NDVI, 6 credits): median 466 pixels touch a
+  field, 104 are edge pixels; the inward 10 m shrink keeps only 304 (35 % discarded). Area-weighted mean over ALL
+  pixels vs shrunk mean: -0.012 (Apr), -0.011 (May), -0.004 (Jun), +0.015 (Jul) NDVI -> small. Headland (outer 20 m)
+  minus core: -0.043 / -0.045 / -0.017 / +0.046; headland lower in 86 / 96 / 68 / 2 % of fields. Design decision: whole
+  fields (area-weighted pixels), headland as its own zone, edge pixels down-weighted in July (neighbouring green
+  vegetation while wheat ripens).
+- S1 debug: variant A (whole fields, no orbit filter) also EMPTY -> neither shrink nor orbit filter is the cause.
+  One field, one week, synchronous: radar pixels valid (VV -15.1, VH -20.5 dB) and aggregate_spatial returns values
+  -> the empty tables come from the batch CSV writer for S1. Fix: batch output format JSON.
+- 14:21 S1 cause found by small synchronous tests (each < 1 credit): 1 field / 1 week OK; 1 field / 3 months OK (31 dates);
+  3 fields 36 km apart: EMPTY (also as batch JSON, 4 credits); 3 NEIGHBOURING fields: OK. -> the CDSE S1 backscatter
+  chain returns nothing for spatially spread geometry sets. Change to the sample design (before any S1-S2 result):
+  the 300 fields come from ONE compact area (the 8 x 8 km cell with the most 2024 wheat fields >= 1 ha), whole
+  outlines, orbit 'ascending', batch JSON.
+- 14:53 S1 GAP-FILLING RESULT (phase6_s1_gapfill.py, run once after speed fixes; 300 fields of one 8 x 8 km cell, 2024,
+  55 ascending S1 dates, 5 credits; 3,407 clear S2 dates, 2,310 S1-S2 pairs; 582 hidden S2 dates, folds by field):
+  RMSE LAI S1 / interpolation: <=15 d 0.177 / 0.157; 16-30 d 0.212 / 0.247; >30 d 0.325 / 1.052; before heading
+  0.311 / 1.156; after heading 0.268 / 0.566. RULE MET (S1 better on gaps > 15 d) -> ADOPTED for gap filling;
+  interpolation stays for gaps <= 15 days.
+  Added AFTER the result (disclosed): date-only model (season day, days since heading, rain; no radar): all 0.356,
+  >30 d 0.415 -> most of the gain over interpolation is the seasonal curve; radar adds -20 % on top and is the only
+  input that ranks fields on the same date (median within-date r 0.49 vs -0.05). Caveat: one year, one compact area.
+  Next: leave-year-out (train 2024, test 2025, same cell, ~5 credits) before using it for all fields.
