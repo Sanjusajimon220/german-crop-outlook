@@ -1517,3 +1517,15 @@ C. Same validation discipline: md5 freeze, one look on 2018-2025 / 2024, clean t
   >30 d 0.415 -> most of the gain over interpolation is the seasonal curve; radar adds -20 % on top and is the only
   input that ranks fields on the same date (median within-date r 0.49 vs -0.05). Caveat: one year, one compact area.
   Next: leave-year-out (train 2024, test 2025, same cell, ~5 credits) before using it for all fields.
+- 18:30 PRE-REGISTRATION, S1 gap filling LEAVE-YEAR-OUT (owner OK, ~5 credits): same 8 x 8 km cell, the 2025 winter wheat
+  fields there (>= 1 ha, up to 300; other fields than 2024 because of rotation), Oct 2024 - Aug 2025, same S1 settings.
+  Models trained ONLY on the 2024 pairs (radar+date model; date-only model as comparison), applied to 2025. Same hiding
+  protocol (30 % of clear S2 dates per field, never first/last). Adopt for all fields if, in 2025, radar+date beats
+  interpolation on gaps > 15 days AND beats the date-only model overall; else gap filling stays a within-year tool.
+- 18:42 S1 LEAVE-YEAR-OUT RESULT (phase6_s1_loyo.py; 2025 radar same cell: 300 fields, 76 dates, 6 credits; models
+  trained only on 2024): RMSE LAI radar / date-only / interpolation: all 0.790 / 0.919 / 0.361; <=15 d 0.791 / 0.992 /
+  0.234; 16-30 d 0.828 / 0.883 / 0.392; >30 d 0.674 / 0.796 / 0.523; same-date ranking r radar 0.26, date-only 0.00.
+  RULE NOT MET -> the radar-LAI relation does not transfer between seasons (timing, soil moisture); 2025 was also much
+  clearer (shorter gaps). DECISION: S1 gap filling is a WITHIN-SEASON tool: trained each season on that season's own
+  clear S2 dates (across fields), used only for gaps > 15 days. Not rolled out yet (would need S1 for all fields per
+  season; cost and benefit to be decided with the owner).
