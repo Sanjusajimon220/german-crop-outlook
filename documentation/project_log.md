@@ -1469,3 +1469,22 @@ C. Same validation discipline: md5 freeze, one look on 2018-2025 / 2024, clean t
   other cereal 0.873, barley 0.860, fallow 0.850. Agrees with agronomy (wheat after cereals weaker: take-all,
   grass weeds; after root crops / rapeseed stronger): an independent, satellite-only confirmation of a rotation
   effect. Not yet in the yield factor (no field yields to size it); shown on the field map as field history.
+
+## 2026-10-13 12:47 - Sentinel-1 GAP FILLING (owner OK: debug test + 300-field sample, <= ~40 credits). Sentinel-2 stays PRIMARY;
+## S1 only fills cloudy gaps. PRE-REGISTRATION (before any result)
+- Why the first S1 test (2023, 500 fields) was empty: suspected inward-shrunk outlines (no S1 pixel centre inside) and/or
+  the orbit filter value. Debug: 20 whole 2024 wheat fields, May 2024, variant A no orbit filter, B 'ascending'.
+- Sample: 300 winter wheat fields 2024 (Rur, >= 1 ha, whole outlines), Oct 2023 - Aug 2024, VV/VH sigma0, one orbit.
+- Model: gradient boosting S1 -> S2 green LAI (pairs within +-2 days); inputs VV, VH, VH-VV (dB), their change since the
+  previous S1 date, day of season, rain on the day and the day before, phase (before / after district heading).
+- CHECK: leave whole FIELDS out (5 folds by field). On clear S2 dates held out from the series, compare S1-predicted LAI
+  with linear interpolation between the neighbouring kept S2 dates. Report RMSE and r by gap length and by phase.
+  ADOPT for gap filling if S1 beats interpolation (lower RMSE) on gaps > 15 days; otherwise not used.
+- 13:24 PRE-REGISTRATION, water calibration v1 (TR32, before any result): reporting-level calibration of field water use and
+  demand (the yield physics is NOT changed: refitting Kc would change yields and needs a full refit, later).
+  Factor k = sum(EC ET) / sum(model ET) over the matched days of the OTHER site-years (leave one site-year out, 5
+  valid site-years from check 2). Adopt if, on the left-out site-years, |calibrated ratio - 1| < |uncalibrated
+  ratio - 1| in >= 4 of 5; then the final k (all 5) multiplies water use and demand in the Field Outlook (supply ratio
+  unchanged). Caveat stated: EC itself under-measures (closure gap), so calibrated values are still conservative.
+- 13:25 WATER CALIBRATION RESULT: leave-one-site-year-out ratios 0.68-0.81 -> 0.86-1.08, closer to 1 in 5 of 5 -> ADOPTED; final k = 1.301 (all 5) applied to field water use and demand (phase5_field_outlook.WATER_K); supply ratio unchanged.
+- 13:46 Field Outlook 2026 (current season): 17,305 fields, 58,725 ha, 31 clear S2 observations per field (median), glad index 97 %; field yield 10/50/90 % 7.78/8.71/9.53 t/ha (anchored to the frozen v12 2026 district forecast); water calibrated (x1.30); median supply 0.98. Map republished with 2021-2026.

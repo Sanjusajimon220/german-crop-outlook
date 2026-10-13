@@ -33,6 +33,7 @@ from phase4_field_assim import observations
 from phase4_field_features import district_dates, features
 
 B, CLIP, SD_FIELD, Z = 0.41, (0.7, 1.3), 0.12, 1.2816
+WATER_K = 1.301     # water calibration v1: model ET x 1.30 = TR32 eddy covariance (leave-one-site-year-out, 5/5 better)
 FD, OUT = os.path.join(P, "field"), os.path.join(P, "field_outlook")
 
 
@@ -66,6 +67,7 @@ def main(years):
             f = f.drop(columns="area_v4").rename(columns={"phys_etp_mm": "water_demand_mm", "phys_eta_mm": "water_use_mm",
                                                          "phys_lai_max": "model_lai_max"})
             f["water_supply"] = f["water_use_mm"] / f["water_demand_mm"]
+            f["water_use_mm"], f["water_demand_mm"] = f["water_use_mm"] * WATER_K, f["water_demand_mm"] * WATER_K
         # satellite index: glad_after, else lai_peak (scaled to glad units by the district ratio)
         f["index"] = np.where(f["glad_after"].notna(), "glad_after", np.where(f["lai_peak"].notna(), "lai_peak", "none"))
         w = f["area_ha"].fillna(1.0)
