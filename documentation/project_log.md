@@ -1423,3 +1423,49 @@ C. Same validation discipline: md5 freeze, one look on 2018-2025 / 2024, clean t
   national k 1.627 (build_v12.py -> ranges_v12_final). Medians unchanged (= v10). No S2 correction.
   2026 frozen: check2026/v12_2026_frozen.csv (12,126 rows), md5 e651e0549ae72578b1a8197dea3c1ba6.
   Test years 2018-2025, barley coverage (INDICATIVE): district 0.80 -> 0.88, national 0.73 -> 0.83, state 0.80.
+
+## 2026-10-13 11:38 - FIELD OUTLOOK v1 (phase 2 pilot) + PRE-REGISTRATIONS of field checks (before any result)
+- Field Outlook v1 (phase5_field_outlook.py; export_field_platform.py; platform/fields/index.html): winter wheat,
+  all Rur-region fields 2021-2025 (15,035-17,479 per season), 2026 when its S2 data are in. Field yield =
+  district v12 forecast (lead 0) x rel, rel = 1 + 0.41 x (relative green leaf duration after heading - 1),
+  clipped 0.7-1.3, rescaled so the area-weighted district mean = district forecast; fallback index = peak LAI
+  (2024: only 15 % of fields had enough clear dates after heading). Second layer: same pattern at the
+  OFFICIAL district level (post-season). Water: field model v4 (own 1 km weather, BK50 soil, satellite-weighted).
+  Bug fixed on the way: district names with umlauts were broken in the platform (VG250 is cp1252).
+- CHECK 3 (YieldSAT, design test): fields with >= 2 fields per district-year and an index value; field yield =
+  group mean of measured yields (oracle level, isolates the PATTERN) x rel with the v1 formula, B estimated on the
+  OTHER farm(s) only (leave one farm out). Compare with the flat pattern (every field = group mean): RMSE of field
+  yield and within-group r. Claim 'pattern helps' only if RMSE is lower in the pooled leave-one-farm-out result
+  AND within-group r > 0.
+- CHECK 2 (TR32 water, eddy covariance): wheat site-years with EC latent heat (Merzenhausen 2011, 2012, 2017;
+  Selhausen 2015; Merken 2009 if its EC file format can be read). EC daily ET = sum of half-hourly LvE (flag <= 1)
+  / 2.45 MJ/kg on days with >= 44 of 48 valid half-hours. Model = the district growth model's water balance
+  (same physics as the field model) for district 05358 Dueren with that year's district weather, daily
+  actual ET recorded. Compare on matched days 1 April - harvest: mean daily ET, ratio model/EC, daily r.
+  Reading: EC under-measures ET by ~10-20 % (energy-balance closure gap), so a ratio of 1.0-1.25 counts as
+  agreement; daily r >= 0.6 as a usable daily pattern.
+- 11:38 CHECK 3 RESULT (field_check_yieldsat.py; 170 fields, 14 district-years, leave one farm out): RMSE flat 0.996,
+  pattern 1.000 t/ha (+0.4 %); within-group r median 0.50 (13 groups). RULE NOT MET (RMSE not lower). Slope differs
+  by farm (0.07 vs 0.61). Reading: the satellite pattern RANKS fields correctly but its t/ha spread does not transfer
+  to an unseen farm. Field map wording changed accordingly: the field-to-field differences are a ranking, the t/ha
+  level is the district's. Needs farm-level yield data (patchCROP, farmers) to calibrate the spread.
+- 11:43 CHECK 2 RESULT (field_check_tr32_water.py -> field_outlook/check_tr32_water.csv). Deviations, disclosed:
+  (a) Selhausen SEF08 2008/2009 EXCLUDED after seeing the values: LvE about -0.03 W/m2 at June noon (physically
+  impossible; real files show 200-350) -> data defect in that file; (b) Merzenhausen 2011 uses district 05370
+  Heinsberg (no Dueren wheat row in 2011, official yield missing); Merzenhausen lies on the Dueren/Heinsberg border.
+  5 valid site-years, 166 matched days: model/EC ratio 0.77 (per site-year 0.68-0.81), daily r median 0.76
+  (0.44-0.86). RULE: ratio band 1.00-1.25 NOT met (model ~23 % low, more after EC closure correction);
+  daily pattern usable (r >= 0.6). Model demand (ET0 x Kc x fAPAR + soil evaporation) is itself low: the physics
+  settings were fitted to YIELDS, not to water fluxes. Consequence: field water USE/DEMAND in mm are labelled
+  as under-estimates; the supply ratio (use/demand) and the timing of stress are the usable outputs. Next: fit Kc /
+  soil evaporation to EC fluxes (TR32 + ICOS DE-RuS/DE-Geb), checked leave-one-site-year-out.
+  Also seen: TR32 measured yields 8.9-11.2 t/ha vs district model 7.2-7.7 (experimental fields, well managed).
+- 11:48 ITEM 1 RESULT, field history (phase5_field_history.py; no yields). All-crop NRW records for the Rur area
+  extracted (fields_rur_allcrops.gpkg, 114-119k fields per year; the older fields_rur.gpkg held only our 4 crops ->
+  first run found a previous crop for only ~47 %). Previous crop = largest overlap (>= 50 %) in season y-1: found for
+  99 % of wheat fields. Rur rotation: sugar beet 27-30 %, maize 22-23 %, potato 14-18 %, rapeseed 10-16 %, wheat 6-10 %.
+  Green leaf duration after heading relative to the district median (2022-2025, ~66,000 field-seasons): after
+  potato 1.08, sugar beet 1.035, other 1.02, rapeseed 1.016, legume 1.01, maize 0.957, wheat 0.910, grass 0.90,
+  other cereal 0.873, barley 0.860, fallow 0.850. Agrees with agronomy (wheat after cereals weaker: take-all,
+  grass weeds; after root crops / rapeseed stronger): an independent, satellite-only confirmation of a rotation
+  effect. Not yet in the yield factor (no field yields to size it); shown on the field map as field history.

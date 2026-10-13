@@ -33,7 +33,7 @@ def r2(x):
 def main():
     os.makedirs(OUT, exist_ok=True)
     krs = gpd.read_file("/vsizip/" + os.path.join("data", "raw", "boundaries", "vg250_12-31.utm32s.shape.ebenen.zip")
-                        + "/vg250_ebenen_1231/VG250_KRS.shp", columns=["AGS", "GEN", "GF"])
+                        + "/vg250_ebenen_1231/VG250_KRS.shp", columns=["AGS", "GEN", "GF"], encoding="cp1252")   # umlauts
     krs = krs[krs["GF"] == 4].dissolve("AGS", aggfunc="first").reset_index()
     krs["geometry"] = krs.geometry.simplify(250)
     krs = krs.to_crs(4326)

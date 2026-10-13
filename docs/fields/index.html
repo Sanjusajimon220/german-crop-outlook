@@ -1,0 +1,290 @@
+<meta charset="utf-8">
+<title>Rur Field Outlook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: controls on top, field map left (canvas, zoomable) + field panel right; same Groundtruth frame as the district platform */
+:root{
+  --bg:#0a0e1a; --panel:#161e33; --ink:#eef1f8; --muted:#8b96b4; --line:#26304a;
+  --accent:#f2a93b; --accent-soft:#3a2f1a; --good:#7cc4ec; --bad:#e0562a; --nodata:#2a3350;
+  --f-display:"Space Grotesk",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){
+  --bg:#f4f6fb; --panel:#ffffff; --ink:#0d2c54; --muted:#4a5f8f; --line:#dbe3f5;
+  --accent:#b9741a; --accent-soft:#fbecd2; --good:#2b6fb5; --bad:#c44a22; --nodata:#d5dbea; color-scheme:light}}
+:root[data-theme="light"]{
+  --bg:#f4f6fb; --panel:#ffffff; --ink:#0d2c54; --muted:#4a5f8f; --line:#dbe3f5;
+  --accent:#b9741a; --accent-soft:#fbecd2; --good:#2b6fb5; --bad:#c44a22; --nodata:#d5dbea; color-scheme:light}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--f-body);padding-block:0 32px;padding-inline:16px;margin:0}
+.wrap{max-width:1320px;margin:0 auto}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 24px;padding-block:18px 10px;border-bottom:1px solid var(--line)}
+h1{font:600 28px/1.1 var(--f-display);margin:0}
+.tag{font:500 12px var(--f-mono);color:var(--muted)}
+.tag a{color:var(--accent);text-decoration:none}
+.controls{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:end;padding-block:14px}
+.ctl{display:flex;flex-direction:column;gap:4px}
+.ctl label{font:600 11px var(--f-body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+select{font:15px var(--f-body);padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink)}
+select:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.reset{font:600 12px var(--f-body);padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);cursor:pointer}
+.grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:16px}
+@media (max-width:900px){.grid{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.mapbox{position:relative;aspect-ratio:1/1;max-width:100%}
+canvas{width:100%;height:100%;display:block;cursor:crosshair;touch-action:none}
+.legend{display:flex;align-items:center;gap:8px;font:12px var(--f-mono);color:var(--muted);flex-wrap:wrap;margin-top:8px}
+.legend .bar{height:10px;flex:1 1 160px;border-radius:3px}
+.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font:12px/1.5 var(--f-mono);box-shadow:0 2px 8px rgba(0,0,0,.25);display:none;z-index:2;max-width:260px}
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0}
+.kpi{border:1px solid var(--line);border-radius:8px;padding:8px}
+.kpi .k{font:600 11px var(--f-body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.kpi .v{font:600 22px var(--f-display);font-variant-numeric:tabular-nums}
+.kpi .s{font:12px var(--f-mono);color:var(--muted)}
+h2{font:600 20px var(--f-display);margin:0 0 4px}
+h3{font:600 13px var(--f-body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+.note{font-size:13px;color:var(--muted)}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:5px 8px;border-bottom:1px solid var(--line);text-align:right;font-size:13px;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font:600 11px var(--f-body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tbl{overflow-x:auto}
+.pill{display:inline-block;font:600 11px var(--f-mono);padding:2px 7px;border-radius:999px;background:var(--accent-soft);color:var(--ink)}
+.prose{max-width:76ch}
+.prose p,.prose li{line-height:1.6;font-size:14px}
+</style>
+
+<div class="wrap">
+<header>
+  <h1>Rur Field Outlook</h1>
+  <span class="tag"><a href="../index.html">← district outlook</a> · winter wheat · every field in the Rur region · pilot v1</span>
+</header>
+
+<div class="controls">
+  <div class="ctl"><label for="season">Season (harvest)</label><select id="season"></select></div>
+  <div class="ctl"><label for="layer">Map layer</label>
+    <select id="layer">
+      <option value="yield">Field yield, forecast (t/ha)</option>
+      <option value="yieldoff">Field yield, official district level (t/ha)</option>
+      <option value="rel">Field vs district (%)</option>
+      <option value="supply">Water supply (use / demand)</option>
+      <option value="demand">Water demand, season (mm)</option>
+      <option value="glad">Green leaf duration after heading</option>
+      <option value="prev">Previous crop (field history)</option>
+    </select></div>
+  <button class="reset" id="reset" type="button">Reset zoom</button>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <div class="mapbox" id="mapbox"><canvas id="map"></canvas><div class="tip" id="tip"></div></div>
+    <div class="legend" id="legend"></div>
+    <p class="note" id="mapnote">Scroll or pinch to zoom, drag to pan, click a field for details.</p>
+  </div>
+  <div class="card" id="panel"></div>
+</div>
+
+<div class="card prose" style="margin-top:16px">
+  <h2>How the field values are made</h2>
+  <p><b>Yield level from the district model.</b> Each district's forecast is the released district model (v12) at the typical harvest date. The area-weighted mean of all wheat fields in a district equals that forecast exactly, so the field map never contradicts the district outlook.</p>
+  <p><b>Two yield layers.</b> "Forecast" is what the outlook says at harvest time. Once Destatis publishes the official district yield (about 1.5 years later), "official district level" keeps the same field pattern but sets the level to the official figure; in the Rur the district forecast was off by about 1 t/ha in 2022, 2024 and 2025, and every field inherits that.</p>
+  <p><b>Pattern between fields from Sentinel-2.</b> For every field, green leaf area (LAI) is retrieved from each clear Sentinel-2 image with a PROSAIL-trained network. The signal used is green leaf area duration in the 45 days after heading: how long the canopy stays green while the grain fills. Field factor = 1 + 0.41 × (field duration / district mean − 1), limited to ±30 %. The 0.41 comes from measured wheat fields (YieldSAT, research data). Tested on farms left out of the fit, the pattern ranks fields correctly (median r 0.50 within a district and season) but does not reduce the error in t/ha (1.000 vs 0.996 t/ha for a flat map), because the strength of the link differs between farms. Read the field-to-field differences as a ranking; the t/ha level is the district's.</p>
+  <p><b>Field history.</b> The previous crop comes from the NRW subsidy records (the field of the year before that covers most of it). Wheat after potato stays green about 8 % longer than its district's median, after sugar beet 3.5 % longer, after wheat 9 % shorter and after barley 14 % shorter (2022-2025, about 66,000 field-seasons): the satellite confirms the rotation effect farmers know.</p>
+  <p><b>Water from the field model.</b> A daily soil-water and crop model per field (1 km DWD weather, BK50 soil map, development from the crop calendar, weighted by the field's satellite LAI) gives the season's water demand and actual use. Supply = use / demand; below 0.85 the crop was short of water. Checked against measured evaporation (eddy covariance) on five TR32 wheat field-seasons near Jülich: the daily pattern agrees (r 0.76), but the model's water use is about 23 % lower than measured. Treat the mm values as under-estimates and use the supply ratio and the timing of stress.</p>
+  <p><b>Limits.</b> Pilot: winter wheat only, Rur region only. Field yields and water values are not yet checked against measured field data in this region. The 80 % range combines the district range with the field-to-field spread that satellite data cannot explain (12 %).</p>
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script>
+const S = {season: null, layer: "yield", data: null, sel: null, t: d3.zoomIdentity};
+const cache = {};
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmt = (v, d = 2) => v == null || !isFinite(v) ? "–" : (+v).toFixed(d);
+const canvas = document.getElementById("map"), ctx = canvas.getContext("2d");
+let proj, path, W = 0, H = 0, tree, scale;
+
+async function load(y) {
+  if (!cache[y]) {
+    const r = await fetch(`data/wheat_${y}.json`);
+    if (!r.ok) return null;
+    const d = await r.json();
+    const ix = Object.fromEntries(d.cols.map((c, i) => [c, i]));
+    d.fields = d.rows.map(r => {
+      const o = {}; d.cols.forEach((c, i) => o[c] = r[i]);
+      o.feature = {type: "Feature", geometry: {type: "Polygon", coordinates: [o.ring]}};
+      return o;
+    });
+    d.dfeat = Object.entries(d.districts).map(([code, v]) => ({code, name: v.name,
+      geometry: {type: "MultiPolygon", coordinates: v.rings.map(r => [r])}}));
+    cache[y] = d;
+  }
+  return cache[y];
+}
+
+function value(f) {
+  switch (S.layer) {
+    case "yield": return f.yield_t_ha;
+    case "yieldoff": return f.yield_official_level;
+    case "rel": return f.rel == null ? null : 100 * (f.rel - 1);
+    case "supply": return f.water_supply;
+    case "demand": return f.water_demand_mm;
+    case "glad": return f.glad_after;
+    case "prev": return f.prev_crop;
+  }
+}
+
+const CROPS = ["sugar beet", "potato", "rapeseed", "legume", "maize", "wheat", "barley", "other cereal", "grass / fodder", "fallow", "other", "unknown"];
+const CROPCOL = d3.scaleOrdinal(CROPS, ["#c2185b", "#8d6e63", "#fdd835", "#43a047", "#ff9800", "#e6c07b", "#c5a3ff", "#9fa8da", "#26a69a", "#78909c", "#bdbdbd", "#555"]);
+function makeScale() {
+  if (S.layer === "prev") return {s: CROPCOL, cat: true};
+  const v = S.data.fields.map(value).filter(x => x != null && isFinite(x)).sort(d3.ascending);
+  const q = p => d3.quantileSorted(v, p);
+  if (S.layer === "rel") { const m = Math.max(Math.abs(q(.02)), Math.abs(q(.98)), 1); return {s: d3.scaleDiverging(t => d3.interpolateRdBu(t)).domain([-m, 0, m]), lo: -m, hi: m, unit: "% vs district"}; }
+  if (S.layer === "supply") return {s: d3.scaleSequential(d3.interpolateRdYlBu).domain([0.6, 1.0]).clamp(true), lo: 0.6, hi: 1.0, unit: "use / demand"};
+  const lo = q(.02), hi = q(.98);
+  if (S.layer === "yield" || S.layer === "yieldoff") return {s: d3.scaleSequential(d3.interpolateRdYlGn).domain([lo, hi]).clamp(true), lo, hi, unit: "t/ha"};
+  if (S.layer === "demand") return {s: d3.scaleSequential(d3.interpolateBlues).domain([lo - (hi - lo) * .3, hi]).clamp(true), lo, hi, unit: "mm"};
+  return {s: d3.scaleSequential(d3.interpolateYlGn).domain([lo, hi]).clamp(true), lo, hi, unit: "LAI × days"};
+}
+
+function size() {
+  const box = document.getElementById("mapbox").getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  W = box.width; H = box.height;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function fit() {
+  proj = d3.geoMercator().fitExtent([[8, 8], [W - 8, H - 8]], {type: "FeatureCollection", features: S.data.dfeat.map(d => ({type: "Feature", geometry: d.geometry}))});
+  path = d3.geoPath(proj, ctx);
+  S.data.fields.forEach(f => { f.c = proj(d3.geoCentroid(f.feature)); f.px = f.ring.map(p => proj(p)); });
+  tree = d3.quadtree(S.data.fields, f => f.c[0], f => f.c[1]);
+}
+
+function draw() {
+  if (!S.data) return;
+  ctx.save();
+  ctx.clearRect(0, 0, W, H);
+  ctx.translate(S.t.x, S.t.y); ctx.scale(S.t.k, S.t.k);
+  const nodata = css("--nodata"), line = css("--line"), ink = css("--ink");
+  for (const f of S.data.fields) {
+    const v = value(f);
+    ctx.beginPath();
+    f.px.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]));
+    ctx.closePath();
+    ctx.fillStyle = scale.cat ? (v == null ? nodata : scale.s(v)) : v == null || !isFinite(v) ? nodata : scale.s(v);
+    ctx.fill();
+  }
+  ctx.lineWidth = 1.2 / S.t.k; ctx.strokeStyle = css("--muted");
+  for (const d of S.data.dfeat) { ctx.beginPath(); path(d.geometry); ctx.stroke(); }
+  if (S.sel) {
+    ctx.beginPath(); S.sel.px.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath();
+    ctx.lineWidth = 2.5 / S.t.k; ctx.strokeStyle = ink; ctx.stroke();
+  }
+  ctx.restore();
+  ctx.font = "12px " + css("--f-mono"); ctx.fillStyle = css("--muted");
+  for (const d of S.data.dfeat) {
+    const c = proj(d3.geoCentroid({type: "Feature", geometry: d.geometry}));
+    if (S.t.k < 3) ctx.fillText(d.name, S.t.applyX(c[0]) - d.name.length * 3.3, S.t.applyY(c[1]));
+  }
+}
+
+function legend() {
+  if (scale.cat) {
+    const present = new Set(S.data.fields.map(f => f.prev_crop));
+    document.getElementById("legend").innerHTML = CROPS.filter(c => present.has(c)).map(c =>
+      `<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:12px;height:12px;border-radius:2px;background:${CROPCOL(c)}"></span>${c}</span>`).join("");
+    return;
+  }
+  const stops = d3.range(0, 1.01, .1).map(t => scale.s(scale.lo + t * (scale.hi - scale.lo)));
+  const d = S.layer === "supply" ? 2 : S.layer.startsWith("yield") ? 1 : 0;
+  document.getElementById("legend").innerHTML = `<span>${fmt(scale.lo, d)}</span><span class="bar" style="background:linear-gradient(90deg,${stops.join(",")})"></span><span>${fmt(scale.hi, d)} ${scale.unit}</span>`;
+}
+
+function pick(ev) {
+  const r = canvas.getBoundingClientRect();
+  const [x, y] = S.t.invert([ev.clientX - r.left, ev.clientY - r.top]);
+  let hit = null;
+  tree.visit((node, x0, y0, x1, y1) => {
+    if (!node.length) { let n = node; do { if (!hit && d3.polygonContains(n.data.px, [x, y])) hit = n.data; } while ((n = n.next)); }
+    const pad = 60;
+    return hit || x0 > x + pad || x1 < x - pad || y0 > y + pad || y1 < y - pad;
+  });
+  return hit;
+}
+
+function panel() {
+  const d = S.data, f = S.sel;
+  const area = d3.sum(d.fields, x => x.area_ha);
+  const byD = d3.rollups(d.fields, v => ({n: v.length, ha: d3.sum(v, x => x.area_ha), fc: v[0].district_forecast, off: v[0].district_official,
+    sup: d3.median(v, x => x.water_supply)}), x => x.district).sort((a, b) => b[1].ha - a[1].ha);
+  let h = "";
+  if (f) {
+    h += `<h2>Field ${f.field_id}</h2><div class="note">${d.districts[f.district]?.name ?? f.district} · ${fmt(f.area_ha, 1)} ha · harvest ${d.season}</div>
+    <div class="kpis">
+      <div class="kpi"><div class="k">Yield</div><div class="v">${fmt(f.yield_t_ha)}</div><div class="s">80 %: ${fmt(f.yield_low80, 1)}–${fmt(f.yield_high80, 1)}</div></div>
+      <div class="kpi"><div class="k">vs district</div><div class="v">${f.rel == null ? "–" : (f.rel >= 1 ? "+" : "") + fmt(100 * (f.rel - 1), 0) + " %"}</div><div class="s">district ${fmt(f.district_forecast)} t/ha</div></div>
+      <div class="kpi"><div class="k">Water supply</div><div class="v">${fmt(f.water_supply)}</div><div class="s">${f.water_supply != null && f.water_supply < 0.85 ? '<span class="pill">short of water</span>' : "use / demand"}</div></div>
+    </div>
+    <table><tbody>
+      <tr><td>Water demand, season</td><td>${fmt(f.water_demand_mm, 0)} mm</td></tr>
+      <tr><td>Water use, season</td><td>${fmt(f.water_use_mm, 0)} mm</td></tr>
+      <tr><td>Green leaf duration after heading</td><td>${fmt(f.glad_after, 0)} LAI·days</td></tr>
+      <tr><td>Peak green LAI</td><td>${fmt(f.lai_peak, 1)}</td></tr>
+      <tr><td>Clear satellite dates</td><td>${f.n_dates}</td></tr>
+      <tr><td>Previous crop / two years ago</td><td>${f.prev_crop ?? "–"} / ${f.prev2_crop ?? "–"}</td></tr>
+      <tr><td>Organic farm</td><td>${f.organic ? "yes" : "no"}</td></tr>
+      <tr><td>District official yield</td><td>${f.district_official == null ? "not yet published" : fmt(f.district_official) + " t/ha"}</td></tr>
+      <tr><td>Field yield at the official district level</td><td>${f.yield_official_level == null ? "–" : fmt(f.yield_official_level) + " t/ha"}</td></tr>
+    </tbody></table>`;
+  } else {
+    h += `<h2>Season ${d.season}</h2><div class="note">Click a field for its values.</div>
+    <div class="kpis">
+      <div class="kpi"><div class="k">Fields</div><div class="v">${d.fields.length.toLocaleString("en")}</div><div class="s">winter wheat</div></div>
+      <div class="kpi"><div class="k">Area</div><div class="v">${Math.round(area).toLocaleString("en")}</div><div class="s">ha</div></div>
+      <div class="kpi"><div class="k">Yield 10–90 %</div><div class="v">${fmt(d3.quantile(d.fields.map(x => x.yield_t_ha).filter(x => x != null).sort(d3.ascending), .5), 1)}</div><div class="s">${fmt(d3.quantile(d.fields.map(x => x.yield_t_ha).filter(x => x != null).sort(d3.ascending), .1), 1)}–${fmt(d3.quantile(d.fields.map(x => x.yield_t_ha).filter(x => x != null).sort(d3.ascending), .9), 1)} t/ha</div></div>
+    </div>`;
+  }
+  h += `<h3>Districts</h3><div class="tbl"><table><thead><tr><th>District</th><th>Fields</th><th>ha</th><th>Forecast</th><th>Official</th><th>Water</th></tr></thead><tbody>${
+    byD.map(([c, v]) => `<tr><td>${d.districts[c]?.name ?? c}</td><td>${v.n}</td><td>${Math.round(v.ha)}</td><td>${fmt(v.fc)}</td><td>${v.off == null ? "–" : fmt(v.off)}</td><td>${fmt(v.sup)}</td></tr>`).join("")}</tbody></table></div>
+    <p class="note">Forecast: district model v12 at the typical harvest date (t/ha). Official: Destatis district yield (published about 1.5 years later). Water: median field supply ratio.</p>`;
+  document.getElementById("panel").innerHTML = h;
+}
+
+async function setSeason(y) {
+  const d = await load(y);
+  if (!d) return;
+  S.season = y; S.data = d; S.sel = null;
+  size(); fit(); scale = makeScale(); legend(); draw(); panel();
+}
+
+(async function init() {
+  const sel = document.getElementById("season");
+  let ok = [];
+  try { ok = (await (await fetch("data/seasons.json")).json()).sort((a, b) => b - a); } catch (e) {}
+  sel.innerHTML = ok.map(y => `<option value="${y}">${y}${y === 2026 ? " (current)" : ""}</option>`).join("");
+  sel.onchange = () => setSeason(+sel.value);
+  document.getElementById("layer").onchange = e => { S.layer = e.target.value; scale = makeScale(); legend(); draw(); };
+  const zoom = d3.zoom().scaleExtent([1, 60]).on("zoom", e => { S.t = e.transform; draw(); });
+  d3.select(canvas).call(zoom);
+  document.getElementById("reset").onclick = () => d3.select(canvas).call(zoom.transform, d3.zoomIdentity);
+  const tip = document.getElementById("tip");
+  canvas.addEventListener("mousemove", ev => {
+    const f = pick(ev);
+    if (!f) { tip.style.display = "none"; return; }
+    const r = canvas.getBoundingClientRect();
+    tip.style.display = "block"; tip.style.left = (ev.clientX - r.left + 12) + "px"; tip.style.top = (ev.clientY - r.top + 12) + "px";
+    tip.innerHTML = `<b>Field ${f.field_id}</b> · ${fmt(f.area_ha, 1)} ha<br>yield ${fmt(f.yield_t_ha)} t/ha (${f.rel >= 1 ? "+" : ""}${fmt(100 * (f.rel - 1), 0)} % vs district)<br>water ${fmt(f.water_use_mm, 0)} of ${fmt(f.water_demand_mm, 0)} mm`;
+  });
+  canvas.addEventListener("mouseleave", () => tip.style.display = "none");
+  canvas.addEventListener("click", ev => { S.sel = pick(ev); draw(); panel(); });
+  window.addEventListener("resize", () => { if (S.data) { size(); fit(); draw(); } });
+  if (ok.length) { sel.value = ok[0]; setSeason(ok[0]); }
+  else document.getElementById("panel").innerHTML = '<p class="note">No field data found next to this page (data/wheat_<season>.json).</p>';
+})();
+</script>
