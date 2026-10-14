@@ -1548,3 +1548,37 @@ C. Same validation discipline: md5 freeze, one look on 2018-2025 / 2024, clean t
   1,362 ha), maize 59 %, potato 41 % (302 vs 634 ha), grass 44 %, legume 26 % (DLR 340 vs 66 ha). Conclusion: NRW
   records are the source in NRW; DLR alone is usable for cereals / rapeseed / beet, not for potato / grass / legumes;
   DLR pseudo-fields are approximate shapes (boundaries outside NRW need other sources).
+- 10:41 Owner decision: all field work stays in NRW (NRW records = crop + exact boundary); outside NRW (DLR maps, own classification, boundary detection) is a later phase.
+
+## 2026-10-14 11:07 - FIELD v2 STEP 2+3 (continuous pixel series), pilot cell 38_706, season 2024 - PRE-REGISTRATION (owner OK)
+- Downloads (openEO, compact 8 x 8 km box, EPSG:32632 10 m grid aligned to step 1): Sentinel-2 L2A Oct 2023 - Aug 2024,
+  10 vegetation bands + SCL + 4 angle bands, one GeoTIFF per date; Sentinel-1 GRD sigma0-ellipsoid VV/VH, ascending,
+  same period and grid. Budget ~30-60 credits.
+- S2 -> PROSAIL network (unchanged, trained 2026-10-05) per pixel and date: LAI, Cab, CCC, Cbrown + sd; NDVI from B4/B8.
+  Clear = SCL 4/5 and >= 2 pixels from any SCL cloud / shadow / cirrus class; Dec-Jan dropped; dates with < 20 % of
+  field pixels clear skipped. Only pixels touching an NRW field (step 1).
+- Check 2d: per wheat field, area-weighted pixel LAI (step-1 shares) vs the existing field-mean retrieval
+  (retrieval_115_2024.csv) on the same dates: report r, mean difference, RMSE (expected close; field means came from
+  inward-shrunk outlines, so headland pixels can lower the pixel-based mean slightly).
+- S1 proxy model (WITHIN 2024 only): inputs VV, VH, VV-VH (dB, 3 x 3 mean against speckle), their 5-day change,
+  crop group (NRW), day of season, district rain day 0/1, days since district heading; targets S2 green LAI and NDVI
+  on clear pixel-dates (S1 date within +-2 days). Check: folds by FIELD; hide 30 % of clear S2 pixel-dates of test
+  fields; compare S1 estimate with per-pixel interpolation between kept clear dates, by gap class and phase.
+  ADOPT for filling if S1 beats interpolation on gaps > 15 days for LAI (and separately NDVI).
+- Correction (job 3): a clear S2 value is flagged 'suspect' if it is below the S1 estimate by more than 2.5 x the S1
+  RMSE AND below both neighbouring clear values of that pixel by > 0.3 LAI (0.05 NDVI); suspect values are replaced
+  by the S1 estimate and labelled 'corrected'. Report the share flagged per month.
+- 11:27 STEP 2 RESULT (phase7_step2_lai.py; downloads 15 credits: S2 29 dates 6 cr, S1 55 dates 9 cr; grid identical to
+  step 1). 13 of 29 S2 dates usable (>= 20 % of field pixels clear, Dec/Jan dropped); gaps 14 Oct-1 Feb (110 d),
+  2 Mar-1 May (60 d), 11 May-25 Jun (45 d). Check 2d: 574 wheat fields, 5,703 field-dates, area-weighted pixel LAI vs
+  field-mean retrieval r 0.995, mean diff +0.024, RMSE 0.112 -> pixel pipeline consistent. Output s2_pixels.npz.
+- 11:37 STEP 3 RESULT (phase7_step3_s1proxy.py; 484,785 pixels, 12 S2 / 55 S1 dates, ~981k hidden pixel-dates, folds
+  by field). LAI RMSE radar / interpolation: <=15 d 0.760 / 0.319; 16-30 d 0.678 / 0.440; >30 d 0.639 / 0.968; before
+  heading 0.487 / 1.097; after heading 0.737 / 0.656. NDVI: 0.130 / 0.058; 0.125 / 0.084; 0.134 / 0.200. RULE NOT MET
+  for either target (radar loses on 16-30 d) -> not adopted as pre-registered; no series written.
+  Per-crop breakdown (added after the result, disclosed): radar better on gaps > 30 d for every crop (wheat 0.49 vs 1.01,
+  barley 0.45 vs 0.87, rapeseed 0.55 vs 0.87, sugar beet 0.67 vs 0.98, potato 0.76 vs 0.99, maize 0.65 vs 0.80,
+  legume 0.98 vs 1.06), interpolation better on <= 30 d for every crop. Pixel radar noisier than field means (0.64 vs
+  0.33 on > 30 d gaps in the field test).
+  PROPOSAL (not adopted): new rule 'radar only for gaps > 30 days, per-crop models', to be pre-registered and tested
+  once on a FRESH season (2025 or 2026, within-season) before use.
