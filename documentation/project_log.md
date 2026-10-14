@@ -1582,3 +1582,29 @@ C. Same validation discipline: md5 freeze, one look on 2018-2025 / 2024, clean t
   0.33 on > 30 d gaps in the field test).
   PROPOSAL (not adopted): new rule 'radar only for gaps > 30 days, per-crop models', to be pre-registered and tested
   once on a FRESH season (2025 or 2026, within-season) before use.
+
+## 2026-10-14 15:31 - LAYER A DATA FUSION: anchored, radar-guided gap filling ('1+4'), pilot 2024 - PRE-REGISTRATION
+- Radar cleaned: per S1 date the FIELD mean of linear VV / VH over the field's pixels (step-1 main field), then a
+  rolling mean over the last 3 S1 dates; features VV, VH, VH-VV (dB) and RVI = 4 VH / (VV + VH). Ascending orbit only
+  (the pilot download has one orbit; both orbits = later improvement).
+- LIVE version (forward): LAI(t) = LAI(last clear date a) + predicted change; inputs = radar feature change between
+  the S1 dates nearest t and nearest a (each within +-3 days), days since a, LAI(a), crop group, season day (sin/cos),
+  rain since a (district 05358), days since heading at t. Target in training: LAI(t) - LAI(a) for kept clear dates
+  a < t of the same pixel (a among the previous 1-3 kept clear dates).
+- RE-ANALYSIS version (both sides): LAI(t) = linear interpolation between the previous and next clear dates + predicted
+  deviation; inputs = radar changes relative to both anchors, relative position in the gap, gap length, both anchor
+  values, crop, season day, rain, days since heading. Target: LAI(t) - interpolation(t) for kept triples.
+- Same hiding protocol as step 3 (seed fixed, 30 % of clear pixel-dates hidden, 5 folds by FIELD, training only on
+  kept dates of training-fold fields), same for NDVI.
+- ADOPT each version separately for each gap class (16-30 d, > 30 d) where its RMSE is lower than interpolation
+  overall AND in >= 4 of the 6 main crops (wheat, barley, sugar beet, potato, maize, rapeseed). Gaps <= 15 d stay
+  interpolated. No credits (2024 data on disk).
+- 16:17 FUSION RESULT ('1+4', phase8_fusion_anchored.py; pilot 2024; ~1.16 M live pairs / 1.02 M re-analysis triples for
+  training; hidden pixel-dates, folds by field). LAI RMSE interp / live / re-analysis: <=15 d 0.319 / 0.385 / 0.252;
+  16-30 d 0.414 / 0.530 / 0.293; >30 d 0.913 / 0.571 / 0.520. NDVI: 0.058 / 0.073 / 0.048; 0.080 / 0.102 / 0.063;
+  0.189 / 0.121 / 0.105. Per crop (6 main crops): re-analysis better than interpolation for 6/6 at 16-30 d and > 30 d
+  (LAI and NDVI); live better 6/6 at > 30 d, 1/6 at 16-30 d.
+  ADOPTED (rule): re-analysis for gaps 16-30 d and > 30 d; live for gaps > 30 d (in-season, before the next clear image).
+  Gaps <= 15 d stay interpolated by the rule, although re-analysis was also better there (0.252 vs 0.319): to be
+  pre-registered for the fresh-season check. Improvement over the direct radar model (> 30 d LAI 0.64 -> 0.52).
+  Caveat: one season, one 8 x 8 km cell; confirmation on a fresh season (2025, ~15 credits) before wider use.
