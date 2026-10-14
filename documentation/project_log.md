@@ -1529,3 +1529,22 @@ C. Same validation discipline: md5 freeze, one look on 2018-2025 / 2024, clean t
   clearer (shorter gaps). DECISION: S1 gap filling is a WITHIN-SEASON tool: trained each season on that season's own
   clear S2 dates (across fields), used only for gaps > 15 days. Not rolled out yet (would need S1 for all fields per
   season; cost and benefit to be decided with the owner).
+
+## 2026-10-14 10:35 - FIELD v2 (10 m, no yield) - PLAN (owner): 1 crop + exact boundary, 2 S2 green LAI per pixel (PROSAIL net),
+## 3 S1 as PROXY for missing dates only (VV, VH, VV-VH, crop, day of year, rain, days since heading; trained within
+## the season on its clear S2 values; gaps > 15 d), 4 continuous series, 5 assimilation per pixel (stage, water),
+## 6 delivery at 10 x 10 m with field summaries on the exact registered boundary. Yield paused.
+- Step 1 now, two SEPARATE versions (owner): A = NRW field records alone, B = DLR CropTypes map alone. Pilot = the
+  8 x 8 km cell 38_706 (EPSG:25832 x 304-312 km, y 5648-5656 km), season 2024 (latest DLR map; 2024 S1 sample there).
+  10 m grid aligned to multiples of 10 m (S2 grid; ETRS89 vs WGS84 UTM 32 differ < 1 m). A: every field (all crops),
+  each pixel's exact area share inside the field (1 m sub-grid), headland = pixel centre within 20 m of the boundary;
+  check: sum of shares x 100 m2 = registered area. B: DLR class per pixel grouped like the NRW crop groups; pseudo-fields
+  = connected areas of one group >= 0.3 ha. Comparison: crop agreement per NRW field and per crop group, areas.
+- 10:36 STEP 1 RESULT (phase7_step1_fields.py; cell 38_706, 2024; outputs data/processed/field_v2/pilot_2024/).
+  A NRW: 2,437 fields (all crops), 4,620 ha; 538,332 pixels touch a field (31 % edge pixels); area from pixel shares vs
+  registered: median |diff| 0.02 %, max 1.82 % -> exact boundaries kept. B DLR 2024: 442,544 crop pixels, 1,740
+  pseudo-fields >= 0.3 ha; DLR grid offset 0.0 m (same grid). Agreement (DLR majority group = registered group):
+  59 % of fields, 74 % of area; barley 92 %, rapeseed 97 %, sugar beet 87 %, wheat 73 % (DLR wheat area 1,075 vs
+  1,362 ha), maize 59 %, potato 41 % (302 vs 634 ha), grass 44 %, legume 26 % (DLR 340 vs 66 ha). Conclusion: NRW
+  records are the source in NRW; DLR alone is usable for cereals / rapeseed / beet, not for potato / grass / legumes;
+  DLR pseudo-fields are approximate shapes (boundaries outside NRW need other sources).
