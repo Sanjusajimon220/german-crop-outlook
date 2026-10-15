@@ -1624,3 +1624,28 @@ C. Same validation discipline: md5 freeze, one look on 2018-2025 / 2024, clean t
   re-analysis 16-30 d 0.2925 -> 0.2934 (worse), > 30 d 0.5195 -> 0.5102. DECISION (rule): LIVE uses v2; RE-ANALYSIS
   stays v1. Gains small (1-2 %): field averaging over 3 dates had already removed most speckle; the filter matters for
   small fields / 10 m radar maps.
+
+## 2026-10-15 11:31 - STEP 1: physics-informed fusion + weekly field series, pilot 2024 - PRE-REGISTRATION (owner OK)
+- Model-expected LAI per WHEAT field: field model v4 PRIOR ensemble (phase4_field_assim_v4.ensembles; field's 1 km
+  weather group, frozen calendar and growth, 3,000 members, NO satellite data) -> member-mean daily LAI from sowing.
+  Features (wheat fields only, empty otherwise): LIVE m_chg = prior(t) - prior(a); RE-ANALYSIS m_dev = prior(t) -
+  linear(prior between a and b), plus prior(t).
+- Test: phase8b (both orbits, filter) WITH vs WITHOUT these features, same hiding, folds, models. ADOPT the physics
+  features for a version (live / re-analysis) if, for WHEAT, LAI RMSE is lower on gaps 16-30 d AND > 30 d. (Barley
+  dropped from the rule: the field model with satellite-fitted LAI shape exists for wheat only.)
+- Weekly field series (2024, all pilot fields): Monday grid; per field-week: measured S2 field mean (>= 50 % of field
+  clear) > interpolation (gap <= 15 d) > re-analysis (both anchors) > live; pixel estimates averaged per field
+  (area-weighted, step-1 shares); uncertainty = test RMSE of the source and gap class; label + days since last clear.
+- 11:42 STEP 1 RESULT, physics features (phase8c_fusion_physics.py vs phase8b, paired draws; 140,602 wheat pixels with a
+  prior). WHEAT LAI RMSE without -> with: live 16-30 d 0.2868 -> 0.2683, > 30 d 0.4577 -> 0.4297; re-analysis 16-30 d
+  0.1747 -> 0.1702, > 30 d 0.5036 -> 0.4883 -> RULE MET for both versions: physics features ADOPTED for wheat LAI.
+  All crops: live > 30 d 0.5605 -> 0.5544 (prior only for wheat). NDVI (not in the rule): wheat live better
+  (0.1047 -> 0.1008), re-analysis > 30 d worse (0.0942 -> 0.0980) -> NDVI series built WITHOUT physics features.
+  Note: the weekly series uses the two-orbit features for re-analysis as well (v1 one-orbit was 0.2925 vs 0.2934 on
+  16-30 d, equal within noise) to keep one feature set.
+- 11:56 WEEKLY SERIES 2024 (phase8d_weekly_series.py physics): 2,436 fields x 46 Monday weeks (110,291 field-weeks); source
+  shares measured 20.4 %, re-analysis 78.9 %, interpolated 0.8 % (live 0: retrospective season). Median LAI uncertainty
+  measured 0.15, interpolated 0.32, re-analysis 0.51. Wheat median LAI Mar 0.72, Apr 1.73, May 2.97, Jun 2.85, Jul 0.76.
+  Fixes: aggregation rewritten with array sums (pandas apply crash), pixel series now saved before aggregation
+  (weekly_pixel_series_2024.npz); LAI clipped >= 0, NDVI to [-1, 1] (a few small negative estimates). Note for delivery:
+  weeks before sowing show the previous crop / cover crop -> label 'before sowing'. Example plot weekly_examples_2024.png.
