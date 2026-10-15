@@ -1608,3 +1608,19 @@ C. Same validation discipline: md5 freeze, one look on 2018-2025 / 2024, clean t
   Gaps <= 15 d stay interpolated by the rule, although re-analysis was also better there (0.252 vs 0.319): to be
   pre-registered for the fresh-season check. Improvement over the direct radar model (> 30 d LAI 0.64 -> 0.52).
   Caveat: one season, one 8 x 8 km cell; confirmation on a fresh season (2025, ~15 credits) before wider use.
+
+## 2026-10-15 10:45 - FUSION UPGRADE (owner OK): both S1 orbits + multi-temporal speckle filter, FIELD level, pilot 2024 - PRE-REG.
+- New download: S1 descending, same box / period / grid (~9 credits). Multi-temporal filter (Quegan & Yu 2001) per
+  orbit on linear sigma0: J_t = M_t x (1/N) sum_i I_i / M_i, M = 5 x 5 local mean, N = all dates of that orbit.
+- Field radar per orbit (field mean of filtered linear VV / VH, rolling 3 dates) -> VV, VH, VH-VV, RVI per orbit as
+  SEPARATE features (asc_*, desc_*), each from the orbit's nearest date within +-3 days. Same anchored LIVE and
+  RE-ANALYSIS models, same hiding (seed 70), folds, crops as the 2024 fusion test.
+- Comparison with the adopted version (ascending, 3x3, field mean): ADOPT the upgrade per version (live / re-analysis)
+  if its LAI RMSE is lower on gaps 16-30 d AND > 30 d, and lower in >= 4 of 6 main crops in the > 30 d class.
+  Disclosed: same season as the adopted version (method comparison); confirmation on 2025 follows.
+- 11:03 UPGRADE RESULT (phase8b_fusion_orbits.py; S1 descending 56 dates, 5 credits; Quegan filter checked on synthetic
+  speckle: CV 0.477 -> 0.120, edge kept). LAI RMSE v1 (asc, 3x3) -> v2 (both orbits, filter): live 16-30 d 0.5295 ->
+  0.5221, > 30 d 0.5710 -> 0.5605 (crops better 4/6: beet, potato, maize, rapeseed; wheat, barley slightly worse);
+  re-analysis 16-30 d 0.2925 -> 0.2934 (worse), > 30 d 0.5195 -> 0.5102. DECISION (rule): LIVE uses v2; RE-ANALYSIS
+  stays v1. Gains small (1-2 %): field averaging over 3 dates had already removed most speckle; the filter matters for
+  small fields / 10 m radar maps.

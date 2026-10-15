@@ -18,11 +18,12 @@ def s2(con):
     return c.create_job(title="field v2 s2 pilot 2024", out_format="GTiff")
 
 
-def s1(con):
+def s1(con, orbit="ascending"):
     c = con.load_collection("SENTINEL1_GRD", spatial_extent=BB, temporal_extent=T, bands=["VV", "VH"],
-                            properties={"sat:orbit_state": lambda x: x == "ascending"}).sar_backscatter(coefficient="sigma0-ellipsoid")
+                            properties={"sat:orbit_state": lambda x: x == orbit}).sar_backscatter(coefficient="sigma0-ellipsoid")
     c = c.resample_spatial(resolution=10, projection=32632)
-    return c.create_job(title="field v2 s1 pilot 2024", out_format="GTiff")
+    title = "field v2 s1 pilot 2024" if orbit == "ascending" else f"field v2 s1 {orbit} pilot 2024"
+    return c.create_job(title=title, out_format="GTiff")
 
 
 def retry(fn, tries=8):
@@ -47,7 +48,10 @@ def job_for(con, title, make):
 if __name__ == "__main__":
     import time
     con = openeo.connect("openeo.dataspace.copernicus.eu").authenticate_oidc()
-    jobs = {"s2": job_for(con, "field v2 s2 pilot 2024", s2), "s1": job_for(con, "field v2 s1 pilot 2024", s1)}
+    if "descending" in sys.argv:
+        jobs = {"s1_desc": job_for(con, "field v2 s1 descending pilot 2024", lambda c: s1(c, "descending"))}
+    else:
+        jobs = {"s2": job_for(con, "field v2 s2 pilot 2024", s2), "s1": job_for(con, "field v2 s1 pilot 2024", s1)}
     for k, j in jobs.items():
         if retry(j.status) == "created":
             retry(j.start)
