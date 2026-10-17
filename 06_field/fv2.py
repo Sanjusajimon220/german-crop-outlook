@@ -152,16 +152,16 @@ def retrieval_landsat(area, year, px):
             prev["lai"][m], prev["ndvi"][m], prev["c"] = lai[m], nd[m], prev["c"] | ok
         else:
             by_date[d] = dict(lai=lai, ndvi=nd, c=ok, platform=s["platform"])
-    dates, lai, ndvi, plat = [], [], [], []
+    dates, lai, nds, plat = [], [], [], []
     for d in sorted(by_date):
         b = by_date[d]
         keep = _keep(b["c"], pinv, pshare, ftot)
         if not keep.any():
             continue
         dates.append(d); plat.append(b["platform"])
-        lai.append(np.where(keep, b["lai"], np.nan)); ndvi.append(np.where(keep, b["ndvi"], np.nan))
+        lai.append(np.where(keep, b["lai"], np.nan)); nds.append(np.where(keep, b["ndvi"], np.nan))
     np.savez_compressed(os.path.join(out_dir(area, year), "landsat_pixels.npz"), dates=np.array(dates, dtype="datetime64[D]"),
-                        rows=rows, cols=cols, lai=np.stack(lai).astype(np.float32), ndvi=np.stack(ndvi).astype(np.float32),
+                        rows=rows, cols=cols, lai=np.stack(lai).astype(np.float32), ndvi=np.stack(nds).astype(np.float32),
                         platform=np.array(plat))
     return len(dates)
 
