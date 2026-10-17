@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc } from "../../docs/js/field_core.mjs";
+import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc } from "../../docs/js/field_core.js";
 
 const weeks = ["2024-05-20", "2024-05-27", "2024-06-03"];
 

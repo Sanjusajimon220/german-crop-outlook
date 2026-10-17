@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { affineFromCorners, applyAffine, invertAffine } from "../../docs/js/field_core.mjs";
+import { affineFromCorners, applyAffine, invertAffine } from "../../docs/js/field_core.js";
 
 // image 800 x 800 px; corners (UL, UR, LL) placed in screen coordinates
 const UL = [100, 50], UR = [900, 80], LL = [70, 850];

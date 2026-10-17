@@ -68,6 +68,12 @@ th{font:600 11px var(--f-body);letter-spacing:.06em;text-transform:uppercase;col
 .prose{max-width:72ch}
 .prose p,.prose li{line-height:1.6}
 section[hidden]{display:none}
+#map path{vector-effect:non-scaling-stroke}
+#map path.area{fill:var(--accent);fill-opacity:.12;stroke:var(--accent);stroke-width:1.5;cursor:zoom-in}
+#map path.f{stroke:var(--ink);stroke-opacity:.55;stroke-width:.6;cursor:pointer}
+#map path.f.sel{stroke:var(--accent);stroke-opacity:1;stroke-width:2.2}
+@media print{header,nav,.controls,#page-explore,#page-accuracy,#page-method,#mf-list button,#mf-detail button,#mf-detail input[type=date]{display:none!important}
+  #page-myfields{display:block!important} body{background:#fff;color:#000}}
 .tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font:12px/1.5 var(--f-mono);box-shadow:0 2px 8px rgba(0,0,0,.25);display:none;z-index:2;max-width:280px}
 </style>
 
@@ -77,6 +83,7 @@ section[hidden]{display:none}
   <span class="tag"><a href="../investigations.html" style="color:var(--accent);text-decoration:none">← Groundtruth-earth</a> · district yield forecasts · model v12 · phase 1 · <a href="fields/index.html" style="color:var(--accent);text-decoration:none">field outlook (Rur pilot) →</a> · <a href="https://github.com/Sanjusajimon220/german-crop-outlook" style="color:var(--muted)">code</a></span>
   <nav role="tablist" aria-label="Pages">
     <button role="tab" id="tab-explore" aria-selected="true" data-page="explore">Explorer</button>
+    <button role="tab" id="tab-my" aria-selected="false" data-page="myfields">My fields</button>
     <button role="tab" id="tab-acc" aria-selected="false" data-page="accuracy">Accuracy</button>
     <button role="tab" id="tab-method" aria-selected="false" data-page="method">Method</button>
   </nav>
@@ -99,15 +106,30 @@ section[hidden]{display:none}
       <option value="wdem">Water demand, season (mm)</option>
       <option value="ndvi">Satellite greenness (NDVI)</option>
     </select></div>
+    <div class="ctl" id="fieldlayer-ctl" hidden><label for="fieldlayer">Field layer</label><select id="fieldlayer">
+      <option value="lai">Green LAI, 10 m</option>
+      <option value="ndvi">NDVI, 10 m</option>
+      <option value="change">Change since last week</option>
+      <option value="source">Data source</option>
+      <option value="unc">Uncertainty</option>
+      <option value="alert">Alerts</option>
+    </select></div>
   </div>
   <div class="grid">
     <div class="card mapbox">
-      <svg id="map" viewBox="0 0 560 720" role="img" aria-label="Map of German districts coloured by the selected value"></svg>
+      <svg id="map" viewBox="0 0 560 720" role="img" aria-label="Map of German districts coloured by the selected value; NRW study areas open the field level"><g id="mapg"></g></svg>
       <div class="tip" id="tip"></div>
       <div class="legend" id="legend"></div>
       <p class="note" id="mapnote"></p>
     </div>
     <div class="card" id="panel" aria-live="polite"></div>
+  </div>
+</section>
+
+<section id="page-myfields" hidden>
+  <div class="grid" style="padding-block:14px">
+    <div class="card"><h2>My fields</h2><div id="mf-list"></div></div>
+    <div class="card" id="mf-detail" aria-live="polite"></div>
   </div>
 </section>
 
@@ -138,6 +160,7 @@ section[hidden]{display:none}
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 const S = { crop: "winter_wheat", year: "2022", lead: 3, layer: "median", sel: "DE", data: {} };
 const LEADS = ["12", "8", "6", "4", "2", "0"];
@@ -190,7 +213,7 @@ function drawMap() {
   else if (S.layer === "ndvi") { domain = [lo ?? 0, hi ?? 1]; scale = d3.scaleSequential(d3.interpolateYlGn).domain(domain); }
   else if (S.layer === "width") { domain = [lo ?? 0, hi ?? 1]; scale = d3.scaleSequential(d3.interpolatePurples).domain([domain[0] - (domain[1] - domain[0]) * 0.3, domain[1]]); }
   else { domain = [lo ?? 0, hi ?? 1]; scale = d3.scaleSequential(d3.interpolateRdYlGn).domain(domain); }
-  const sel = svg.selectAll("path.d").data(GEO.features, f => f.properties.code);
+  const sel = d3.select("#mapg").selectAll("path.d").data(GEO.features, f => f.properties.code);
   sel.join("path").attr("class", f => "d" + (f.properties.code === S.sel ? " sel" : "")).attr("d", path)
     .attr("fill", f => { const v = valueFor(f.properties.code); return v == null ? css("--line") : scale(v); })
     .on("mousemove", (e, f) => { const t = document.getElementById("tip"), v = valueFor(f.properties.code), r = rowFor(f.properties.code);
@@ -267,6 +290,7 @@ function drawPanel() {
   if (!r && code.length === 5) h += `<p class="note">No forecast for ${c.label.toLowerCase()} here: Destatis publishes no official district yield for this crop in this district and season (crop absent, city district, or small / confidential area). Satellite greenness below is still shown.</p>`;
   if (w && w[0] == null && w[2] != null) h += `<h3>Water (2026, simulated)</h3><p>Supply ratio <b>${fmt(w[2])}</b>${w[2] < 0.85 ? ' <span class="pill bad">water-limited</span>' : ""}</p>`;
   if (w && w[0] != null) h += `<h3>Water (simulated season)</h3><p>Crop water use <b>${fmt(w[0], 0)} mm</b> of a demand of <b>${fmt(w[1], 0)} mm</b> · supply ratio <b>${fmt(w[2])}</b>${w[2] < 0.85 ? ' <span class="pill bad">water-limited</span>' : ""}</p>`;
+  if (code.length === 5 && window.FIELDVIEW) h += window.FIELDVIEW.districtFieldLine(code);
   const nd = ndviChart(code);
   if (nd) h += `<h3>Satellite greenness (MODIS NDVI, cropland)</h3>${nd}<p class="note">Green: ${S.year}. Grey: other seasons 2018-2026.</p>`;
   if (code.length === 5) h += `<p><button id="toState">Show ${META.states[code.slice(0, 2)]}</button> <button id="toDE">Show Germany</button></p>`;
@@ -309,7 +333,8 @@ function accuracyTables() {
 
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
   document.querySelectorAll("nav button").forEach(x => x.setAttribute("aria-selected", x === b));
-  ["explore", "accuracy", "method"].forEach(p => document.getElementById("page-" + p).hidden = p !== b.dataset.page);
+  ["explore", "myfields", "accuracy", "method"].forEach(p => document.getElementById("page-" + p).hidden = p !== b.dataset.page);
+  if (b.dataset.page === "myfields" && window.MYFIELDS) window.MYFIELDS.render();
 });
 (async () => {
   [META, GEO, ACC] = await Promise.all([getJSON("meta.json"), getJSON("districts.geojson"), getJSON("accuracy.json")]);
@@ -317,10 +342,19 @@ document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
   const cs = document.getElementById("crop");
   cs.innerHTML = Object.entries(META.crops).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join("");
   cs.onchange = e => { S.crop = e.target.value; refresh(); };
-  document.getElementById("year").onchange = e => { S.year = e.target.value; refresh(); };
-  document.getElementById("lead").oninput = e => { S.lead = +e.target.value; setLeadLabel(); drawMap(); drawPanel(); };
+  document.getElementById("year").onchange = async e => { S.year = e.target.value; await refresh();
+    if (window.FIELDMODE && window.FIELDMODE.active) window.FIELDVIEW.enterField(window.FIELDVIEW.FV.area); };
+  document.getElementById("lead").oninput = e => { if (window.FIELDMODE && window.FIELDMODE.active) return window.FIELDMODE.onSlide(+e.target.value);
+    S.lead = +e.target.value; setLeadLabel(); drawMap(); drawPanel(); };
   document.getElementById("layer").onchange = e => { S.layer = e.target.value; drawMap(); };
   accuracyTables();
   await refresh();
+  try {                                   // field level: optional; a failure here must never break the district app
+    const fv = await import("./js/field_view.js");
+    window.FIELDVIEW = fv;
+    await fv.initField();
+    await import("./js/my_fields.js");
+    drawPanel();
+  } catch (e) { console.warn("field level not available:", e); }
 })().catch(err => { document.getElementById("panel").textContent = "Could not load the data: " + err.message; });
 </script>

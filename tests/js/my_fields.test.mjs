@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { loadMyFields, saveMyFields, zones } from "../../docs/js/field_core.mjs";
+import { loadMyFields, saveMyFields, zones } from "../../docs/js/field_core.js";
 
 const mem = init => { const m = new Map(init); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, v) }; };
 const KEY = "cropOutlook.myFields.v1";

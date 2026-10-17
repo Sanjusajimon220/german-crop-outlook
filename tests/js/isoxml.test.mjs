@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildTaskData } from "../../docs/js/isoxml.mjs";
+import { buildTaskData } from "../../docs/js/isoxml.js";
 
 const grid = { minLat: 50.9, minLon: 6.3, dLat: 0.0001, dLon: 0.00015, rows: 3, cols: 4 };
 const classes = Int8Array.from([0, 1, 2, -1, 0, 1, 2, 2, 1, 1, 0, -1]);
