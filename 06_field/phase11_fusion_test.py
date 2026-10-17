@@ -31,7 +31,7 @@ def nearest(dates, d, tol=3):
 class Season:
     """One area-season: measured values on a date axis (S2, optionally + Landsat LAI), radar, context, hiding."""
 
-    def __init__(self, area, year, target, landsat=False, date_hide=False):
+    def __init__(self, area, year, target, landsat=False, date_hide=False, hide_share=0.3):
         self.area, self.year, self.target = area, year, target
         px = fv2.pixels(area, year)
         self.px = px
@@ -54,7 +54,7 @@ class Season:
         c2 = np.isfinite(y2)
         if date_hide:                                         # E1b: whole S2 dates hidden (real clouds hide all fields)
             T2 = c2.shape[0]
-            pick = np.random.default_rng(70).choice(np.arange(1, T2 - 1), int(round(0.3 * T2)), replace=False)
+            pick = np.random.default_rng(70).choice(np.arange(1, T2 - 1), int(round(hide_share * T2)), replace=False)
             h2 = np.zeros_like(c2)
             h2[pick] = c2[pick]
         else:
