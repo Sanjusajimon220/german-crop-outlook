@@ -144,6 +144,10 @@ def export(area, year):
         srcw = np.stack([np.stack([np.bincount(inv, weights=share * (z[f"{t}_src"][w] == k), minlength=F) for k in range(5)], 1)
                          for w in range(len(weeks))])
         fs[f"{t}_src"] = srcw.argmax(2)
+    bbox = {}
+    for k in range(F):                                        # pixel window of each field: [row0, row1, col0, col1]
+        p = np.flatnonzero(inv == k)
+        bbox[k] = [int(rows[p].min()), int(rows[p].max()) + 1, int(cols[p].min()), int(cols[p].max()) + 1]
     series = {"weeks": weeks, "fields": {}}
     med = {gr: np.nanmedian(np.where(group[None, :] == gr, fs["lai"], np.nan), axis=1) for gr in set(group)}
     for k, f in enumerate(fids):
@@ -153,7 +157,8 @@ def export(area, year):
         alert = [a if s else 0 for a, s in zip(alert, season)]
         series["fields"][str(int(f))] = {"lai": _rnd(lai, 2), "ndvi": _rnd(fs["ndvi"][:, k], 3), "lai_unc": _rnd(fs["lai_unc"][:, k], 2),
                                          "ndvi_unc": _rnd(fs["ndvi_unc"][:, k], 3), "src": fs["lai_src"][:, k].tolist(),
-                                         "ndvi_src": fs["ndvi_src"][:, k].tolist(), "season": season, "alert": alert}
+                                         "ndvi_src": fs["ndvi_src"][:, k].tolist(), "season": season, "alert": alert,
+                                         "bb": bbox[k], "group": group[k]}
     json.dump(series, open(os.path.join(out, "series.json"), "w"), separators=(",", ":"))
     # pixel blocks: one gzip block per field (weeks x its pixels, uint8), index with byte offsets
     index, blobs, off = {}, [], 0
@@ -188,7 +193,9 @@ def write_index():
         x0, y0, x1, y1 = bounds(a)
         w, s, e, n = gpd.GeoSeries([box(x0, y0, x1, y1)], crs=25832).to_crs(4326).total_bounds
         seasons = [y for y in YEARS if os.path.exists(os.path.join(DOCS, f"{a}_{y}", "series.json"))]
+        ul, ur, ll = gpd.GeoSeries(gpd.points_from_xy([x0, x1, x0], [y1, y1, y0]), crs=25832).to_crs(4326)
         idx["areas"][a] = {"bounds_wgs84": [round(float(v), 6) for v in (w, s, e, n)], "bounds_utm32": [x0, y0, x1, y1],
+                           "corners_wgs84": [[round(pt.x, 7), round(pt.y, 7)] for pt in (ul, ur, ll)],
                            "seasons": seasons}
     json.dump(idx, open(os.path.join(DOCS, "index.json"), "w"), indent=1)
 
