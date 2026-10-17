@@ -25,7 +25,7 @@ PARTS = os.path.join(OUT, "area_parts")
 SUMMARY_LOG = os.path.join(OUT, "area_test_summary_log.txt")
 YEARS = range(2021, 2026)
 NDVI_MEASURED_SD = 0.02                      # assumed sensor noise of a clear-day NDVI value (labelled as assumed)
-KEYS = ("line_le15", "line_16_30", "radar_gt30", "live_le30", "live_gt30")
+KEYS = ("line_le15", "line_16_30", "line_gt30", "radar_gt30", "live_le30", "live_gt30")
 
 
 def _rmse(v):
@@ -41,6 +41,7 @@ def uncertainty_table():
         e = pd.concat([pd.read_csv(f, usecols=["obs", "line", "live", "reanalysis", "gap_s2"]) for f in files])
         g = e["gap_s2"]
         out[t] = {"line_le15": _rmse((e.line - e.obs)[g <= 15]), "line_16_30": _rmse((e.line - e.obs)[(g > 15) & (g <= 30)]),
+                  "line_gt30": _rmse((e.line - e.obs)[g > 30]),
                   "radar_gt30": _rmse((e.reanalysis - e.obs)[g > 30]), "live_le30": _rmse((e.live - e.obs)[g <= 30]),
                   "live_gt30": _rmse((e.live - e.obs)[g > 30])}
     json.dump(out, open(os.path.join(OUT, "uncertainty_V2.json"), "w"), indent=1)

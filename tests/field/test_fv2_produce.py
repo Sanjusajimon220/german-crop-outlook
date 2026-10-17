@@ -10,7 +10,7 @@ def test_hide_share_zero_hides_nothing():
 def test_uncertainty_table_keys_and_order():
     u = P.uncertainty_table()
     for t in ("lai", "ndvi"):
-        assert set(u[t]) == {"line_le15", "line_16_30", "radar_gt30", "live_le30", "live_gt30"}
+        assert set(u[t]) == {"line_le15", "line_16_30", "line_gt30", "radar_gt30", "live_le30", "live_gt30"}
         assert all(0 < v < (2.0 if t == "lai" else 0.5) for v in u[t].values())
 
 
