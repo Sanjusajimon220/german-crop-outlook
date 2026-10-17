@@ -56,6 +56,18 @@ def _predict(net, ck, x):
     return mu.numpy() * ck["ys"] + ck["ym"], np.exp(0.5 * lv.numpy()) * ck["ys"]
 
 
+NDVI_MIN_SUM = 0.01                                           # red + NIR reflectance below this: ratio meaningless
+
+
+def ndvi(red, nir):
+    """NDVI; NaN where red + NIR < 0.01 (near-zero reflectances, the ratio explodes) or the result is outside [-1, 1]."""
+    red, nir = np.asarray(red, float), np.asarray(nir, float)
+    s = red + nir
+    with np.errstate(divide="ignore", invalid="ignore"):
+        v = (nir - red) / s
+    return np.where((s >= NDVI_MIN_SUM) & (np.abs(v) <= 1), v, np.nan)
+
+
 def _keep(c, pinv, pshare, ftot):
     """Scene >= 20 % clear: all clear pixels; otherwise clear pixels of fields >= 50 % clear (fix 1)."""
     if c.mean() >= 0.2:
@@ -90,9 +102,9 @@ def retrieval_s2(area, year, px):
         lai, sd = np.full(len(rows), np.nan), np.full(len(rows), np.nan)
         pred, psd = _predict(net, ck, x[ok])
         lai[ok], sd[ok] = np.clip(pred[:, 0], 0, None), psd[:, 0]
-        ndvi = np.where(ok, (refl[:, 6] - refl[:, 2]) / (refl[:, 6] + refl[:, 2] + 1e-6), np.nan)
+        nd = np.where(ok, ndvi(refl[:, 2], refl[:, 6]), np.nan)
         dates.append(d)
-        for k, v in (("lai", lai), ("lai_sd", sd), ("ndvi", ndvi)):
+        for k, v in (("lai", lai), ("lai_sd", sd), ("ndvi", nd)):
             out[k].append(v.astype(np.float32))
     np.savez_compressed(os.path.join(out_dir(area, year), "s2_pixels_fv2.npz"), dates=np.array(dates, dtype="datetime64[D]"),
                         rows=rows, cols=cols, **{k: np.stack(v) for k, v in out.items()})
@@ -133,13 +145,13 @@ def retrieval_landsat(area, year, px):
         if ok.any():
             pred, _ = _predict(net, ck, x[ok])
             lai[ok] = np.clip(pred[:, 0], 0, None)
-        ndvi = np.where(ok, (x[:, 3] - x[:, 2]) / (x[:, 3] + x[:, 2] + 1e-6), np.nan).astype(np.float32)
+        nd = np.where(ok, ndvi(x[:, 2], x[:, 3]), np.nan).astype(np.float32)
         if d in by_date:
             prev = by_date[d]
             m = ok & ~prev["c"]
-            prev["lai"][m], prev["ndvi"][m], prev["c"] = lai[m], ndvi[m], prev["c"] | ok
+            prev["lai"][m], prev["ndvi"][m], prev["c"] = lai[m], nd[m], prev["c"] | ok
         else:
-            by_date[d] = dict(lai=lai, ndvi=ndvi, c=ok, platform=s["platform"])
+            by_date[d] = dict(lai=lai, ndvi=nd, c=ok, platform=s["platform"])
     dates, lai, ndvi, plat = [], [], [], []
     for d in sorted(by_date):
         b = by_date[d]
