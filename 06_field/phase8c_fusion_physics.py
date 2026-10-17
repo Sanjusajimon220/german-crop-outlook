@@ -11,14 +11,18 @@ RE-ANALYSIS: LAI(t) = interp(t between a and b) + g(radar changes vs a and b, po
 Radar: field mean of linear VV / VH per S1 date, rolling mean over 3 S1 dates; VV, VH, VH-VV (dB), RVI.
 Check: hide 30 % of clear pixel-dates (seed 7 as step 3), 5 folds by field; RMSE vs interpolation by gap class, crop.
 Outputs data/processed/field_v2/pilot_2024/fusion3_check.csv.gz, fusion3_summary.csv, fusion3_by_crop.csv
+Option `v2` (fix 1 + fix 2, pre-registered 2026-10-15): input s2_pixels_v2.npz (clearness per field), wheat LAI
+re-analysis bent to the physics shape (fix2_params.json: re + w * (line + k * m_dev - re)) -> fusion4_*.
 """
+import json
 import os
+import sys
 
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import HistGradientBoostingRegressor
 
-from phase7_step3_s1proxy import CROPS, context, prev_next
+from phase7_step3_s1proxy import CROPS, context, neighbours, pixel_groups, prev_next
 from radar_tools import field_radar as orbit_radar
 RAW = os.path.join("data", "raw", "field_v2", "pilot_2024")
 
@@ -27,6 +31,11 @@ OUT = os.path.join(P, "field_v2", "pilot_2024")
 MAIN6 = ["wheat", "barley", "sugar beet", "potato", "maize", "rapeseed"]
 RADAR = ["VV", "VH", "RAT", "RVI"]
 ORBITS = {"asc": "s1", "desc": "s1_desc"}
+V2 = "v2" in sys.argv
+PAIRED = "paired" in sys.argv                                    # hide exactly the fusion3 values (v1 vs v2 paired test)
+NOPHYS = "nophys" in sys.argv                                    # satellite-only fusion (physics only in assimilation)
+TAG = ("fusion6" if NOPHYS else "fusion5") if PAIRED else ("fusion4" if V2 else "fusion3")
+PHYS_KEYS = ("m_chg", "m_dev", "prior_t")
 
 
 def nearest_s1(s1d, d, tol=3):
@@ -35,7 +44,8 @@ def nearest_s1(s1d, d, tol=3):
 
 
 def main():
-    z = np.load(os.path.join(OUT, "s2_pixels.npz"))
+    z = np.load(os.path.join(OUT, "s2_pixels_v2.npz" if V2 else "s2_pixels.npz"))
+    fx = json.load(open(os.path.join(OUT, "fix2_params.json"))) if V2 else None
     s2d, rows, cols = pd.DatetimeIndex(z["dates"]), z["rows"], z["cols"]
     px = pd.read_csv(os.path.join(OUT, "pixels_nrw.csv.gz"))
     fl = pd.read_csv(os.path.join(OUT, "fields_nrw.csv"))
@@ -71,6 +81,15 @@ def main():
         last = clear.shape[0] - 1 - np.argmax(clear[::-1], axis=0)
         hide[first, np.arange(clear.shape[1])] = False
         hide[last, np.arange(clear.shape[1])] = False
+        if PAIRED:                                               # the fusion3 hiding, placed on the v2 date axis
+            zo = np.load(os.path.join(OUT, "s2_pixels.npz"))
+            co = np.isfinite(zo[target])
+            ho = co & (np.random.default_rng(70).random(co.shape) < 0.3)
+            ho[np.argmax(co, axis=0), np.arange(co.shape[1])] = False
+            ho[co.shape[0] - 1 - np.argmax(co[::-1], axis=0), np.arange(co.shape[1])] = False
+            hide = np.zeros_like(clear)
+            hide[[s2d.get_loc(d) for d in pd.DatetimeIndex(zo["dates"])]] = ho
+            assert np.all(clear[hide]) and np.array_equal(zo["rows"], rows) and np.array_equal(zo["cols"], cols)
         kept = clear & ~hide
 
         def radar_at(i, idx):
@@ -90,7 +109,7 @@ def main():
             r = radar_at(i, idx) - radar_at(a, idx)
             d = dict(base(i, idx), days=days[i] - days[a], y_a=y[a, idx], m_chg=PRI[i, idx] - PRI[a, idx], prior_t=PRI[i, idx],
                      rain=rain_cum[s2d[i]] - rain_cum[s2d[a]], **{f"d{o}_{f}": r[:, n] for n, (o, f) in enumerate((o, f) for o in ORBITS for f in RADAR)})
-            return pd.DataFrame(d)
+            return pd.DataFrame({k: v for k, v in d.items() if not (NOPHYS and k in PHYS_KEYS)})
 
         def re_rows(i, a, b, idx):
             ra, rb = radar_at(i, idx) - radar_at(a, idx), radar_at(i, idx) - radar_at(b, idx)
@@ -101,12 +120,23 @@ def main():
                      rain_a=rain_cum[s2d[i]] - rain_cum[s2d[a]], rain_b=rain_cum[s2d[b]] - rain_cum[s2d[i]],
                      **{f"da{o}_{f}": ra[:, n] for n, (o, f) in enumerate((o, f) for o in ORBITS for f in RADAR)},
                      **{f"db{o}_{f}": rb[:, n] for n, (o, f) in enumerate((o, f) for o in ORBITS for f in RADAR)})
-            return pd.DataFrame(d)
+            return pd.DataFrame({k: v for k, v in d.items() if not (NOPHYS and k in PHYS_KEYS)})
 
         # training sets from KEPT dates only: live pairs (a among previous 1-3 kept), re-analysis triples
         T = len(s2d)
         Ltr, Lt, Rtr, Rt, Lf, Rf = [], [], [], [], [], []
-        for i in range(T):
+        if V2:                                                   # fix 1b: each pixel's own neighbouring clear dates
+            pv, nx = neighbours(kept, 3)
+            for i in range(T):
+                for s in range(3):
+                    for (a,), idx in pixel_groups(i, kept[i], (pv[s],), 40000, rng):
+                        Ltr.append(live_rows(i, a, idx)); Lt.append(y[i, idx] - y[a, idx]); Lf.append(fold[idx])
+                for s in range(2):
+                    for u in range(2):
+                        for (a, b), idx in pixel_groups(i, kept[i], (pv[s], nx[u]), 30000, rng):
+                            lin = y[a, idx] + (days[i] - days[a]) / (days[b] - days[a]) * (y[b, idx] - y[a, idx])
+                            Rtr.append(re_rows(i, a, b, idx)); Rt.append(y[i, idx] - lin); Rf.append(fold[idx])
+        for i in range(T if not V2 else 0):
             for a in range(max(0, i - 3), i):
                 idx = np.flatnonzero(kept[i] & kept[a])
                 if len(idx) > 40000:
@@ -139,13 +169,17 @@ def main():
                     lin = y[a, idx] + (days[i] - days[a]) / (days[b] - days[a]) * (y[b, idx] - y[a, idx])
                     live = y[a, idx] + mL.predict(live_rows(i, a, idx))
                     re = lin + mR.predict(re_rows(i, a, b, idx))
+                    if fx and target == "lai" and not NOPHYS:                   # fix 2: physics-shaped gap (wheat, where a prior exists)
+                        pos = (days[i] - days[a]) / (days[b] - days[a])
+                        mdev = PRI[i, idx] - (PRI[a, idx] + pos * (PRI[b, idx] - PRI[a, idx]))
+                        re = np.where(np.isfinite(mdev), re + fx["w"] * (lin + fx["k"] * mdev - re), re)
                     ev.append(pd.DataFrame({"target": target, "pixel": idx, "date_i": i, "obs": y[i, idx], "interp": lin,
                                             "live": live, "reanalysis": re, "gap": days[b] - days[a], "crop": grp[idx]}))
         e = pd.concat(ev, ignore_index=True)
         e["gap_class"] = pd.cut(e["gap"], [0, 15, 30, 400], labels=["<=15 d", "16-30 d", ">30 d"])
         results.append(e)
     e = pd.concat(results, ignore_index=True)
-    e.to_csv(os.path.join(OUT, "fusion3_check.csv.gz"), index=False)
+    e.to_csv(os.path.join(OUT, f"{TAG}_check.csv.gz"), index=False)
     rm = lambda v: float(np.sqrt(np.mean(np.square(v))))
     summ, byc = [], []
     for (t, gc), g in e.groupby(["target", "gap_class"], observed=True):
@@ -156,8 +190,8 @@ def main():
                 byc.append(dict(target=t, gap=gc, crop=c, n=len(h), interp=rm(h.interp - h.obs), live=rm(h.live - h.obs),
                                 reanalysis=rm(h.reanalysis - h.obs)))
     s, b = pd.DataFrame(summ).round(3), pd.DataFrame(byc).round(3)
-    s.to_csv(os.path.join(OUT, "fusion3_summary.csv"), index=False)
-    b.to_csv(os.path.join(OUT, "fusion3_by_crop.csv"), index=False)
+    s.to_csv(os.path.join(OUT, f"{TAG}_summary.csv"), index=False)
+    b.to_csv(os.path.join(OUT, f"{TAG}_by_crop.csv"), index=False)
     print(s.to_string(index=False))
     print(b[b["gap"] != "<=15 d"].to_string(index=False))
     for t in ("lai", "ndvi"):

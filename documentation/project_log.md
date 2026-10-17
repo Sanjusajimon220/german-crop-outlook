@@ -1649,3 +1649,311 @@ C. Same validation discipline: md5 freeze, one look on 2018-2025 / 2024, clean t
   Fixes: aggregation rewritten with array sums (pandas apply crash), pixel series now saved before aggregation
   (weekly_pixel_series_2024.npz); LAI clipped >= 0, NDVI to [-1, 1] (a few small negative estimates). Note for delivery:
   weeks before sowing show the previous crop / cover crop -> label 'before sowing'. Example plot weekly_examples_2024.png.
+
+## 2026-10-15 — Check: is the late-gap re-analysis plateau trustworthy? (pre-registered before results)
+Owner concern: wheat example 7493815 stays ~3.6 until 17 June, then measured 2.3 on 25 June (drop 1.3 in a week).
+Independent check, no retraining, one look:
+- (a) Partly cloudy S2 dates skipped in step 2 (scene < 20 % clear): 2024-05-16, 2024-06-15, 2024-06-30, 2024-07-10.
+  Same retrieval and mask as step 2; fields with >= 50 % of their area clear. Compare field-mean S2 LAI with the
+  weekly series at that date (linear between weeks) and with a straight line between the clear anchors.
+- (b) Hidden-date test (fusion3_check): hidden 25 June wheat pixels -> re-analysis bias and RMSE.
+- Rule: late-gap re-analysis trusted if, on (a) June dates for wheat, RMSE <= stated uncertainty (0.51) AND bias within ±0.25.
+  Otherwise: plateau-then-drop is an artefact -> fix (e.g. physics-shaped curve near anchors) before step 2.
+Result 12:12 (check_late_gap.py, check_late_gap.csv):
+- (a) Partly cloudy dates: 16 May no field clear; 15 June 26 fields (5 wheat); 30 June not usable (all within ±3 d of
+  the measured 25 June week); 10 July 304 fields (gap 25 June -> 15 July, short).
+  15 June all crops: fused RMSE 0.32, bias +0.06 vs straight line 0.44 / -0.07.
+  15 June WHEAT (n 5): fused RMSE 0.44, bias +0.29; line RMSE 0.67, bias -0.58. Two fields over by ~0.7.
+  10 July wheat (n 59): fused 0.24 / -0.22, line 0.21 / -0.18 (short gap, both fine).
+- (b) Hidden 25 June wheat pixels (n 42,571): re-analysis bias -0.11, RMSE 0.64; line bias -0.83, RMSE 1.13.
+- RULE: RMSE 0.44 <= 0.51 met, bias +0.29 outside ±0.25 -> NOT met (only 5 fields; weak evidence).
+  Reading: peak level is right (line misses it by ~0.6), but the plateau is held too long before the next clear image;
+  the wheat decline starts in early/mid June (physics prior also falls from 3 June), so the one-week 'cliff' to
+  25 June is partly an artefact. Fix needed before assimilation step 2 (pre-register separately).
+
+## 2026-10-15 — Fix 1 + Fix 2 (owner OK; pre-registered before any result)
+FIX 2 (wheat LAI re-analysis, physics-shaped gap ends). Script phase8e_fix2_shape.py, OLD s2_pixels (so 15 June stays independent).
+- Physics-shaped line: shape = lin + k * m_dev, m_dev = prior(t) - line of prior between the anchors a, b.
+- Candidate: final = re + w * (shape - re). k in {0.5..1.5}, w in {0..1} (grid 0.1), fitted per fold on hidden wheat
+  pixel-dates of the OTHER 4 folds (same hiding / folds / predictions as fusion3_check), applied to the held-out fold.
+- Rule ADOPT if, wheat LAI hidden dates: RMSE >30 d lower than current re-analysis (0.488) AND 16-30 d not worse by > 0.01
+  AND in the last third of long gaps (pos > 2/3, gap > 30 d) |bias| not larger; plus independent 15 June wheat (n 5):
+  |bias| smaller than +0.29. Final k, w = fit on all hidden wheat rows. Only wheat LAI (physics exists only there).
+FIX 1 (clearness per field). phase7_step2_lai.py option `perfield` -> s2_pixels_v2.npz. Pixel-date kept if clear (same mask)
+  AND (scene >= 20 % clear OR its main field >= 50 % clear by area). Dec / Jan still dropped. Old file kept.
+- Then fusion test re-run on v2 pixels (phase8c_fusion_physics.py `v2` -> fusion4_*; fix 2 applied with the fixed k, w
+  from above; disclosed: k, w were chosen on the old hiding of the same fields) and weekly series v2
+  (weekly_field_series_2024_v2.csv) with uncertainties from fusion4. Report: added field-dates, measured share,
+  RMSE by gap class vs fusion3 (not a paired comparison: dataset differs), new example graph.
+Result FIX 2 (phase8e_fix2_shape.py, fix2_log.txt): NOT ADOPTED. Grid search chose w = 0 in all 5 folds (physics shape
+adds nothing). Wheat LAI hidden dates: 16-30 d 0.170 = 0.170; >30 d 0.379 = 0.379 (line 0.843); last third of long gaps
+bias -0.017 (no systematic overshoot in the test); first third +0.035. 15 June independent (n 5): unchanged, bias +0.29.
+Post-hoc (disclosed): corr(physics deviation, obs - line) 0.73, but corr(physics deviation, remaining error) -0.02 ->
+the re-analysis already contains what physics knows (corr(re - line, obs - line) 0.87). fix2_params w = 0 -> v2 runs are
+fix 1 only. The 15 June overshoot (5 fields) is not confirmed as systematic by 79,760 hidden late-gap wheat pixel-dates.
+Owner decision (after fix 2 result): fix 2 stays OUT. v2 series = fix 1 only (fix2_params w = 0 -> identity, no change).
+Result FIX 1 test (fusion4, 12:28): LAI re-analysis WORSE: >30 d 0.505 -> 0.724 (wheat 0.488 -> 0.746), 16-30 d 0.293 -> 0.330;
+live >30 d 0.554 -> 0.646. Weekly v2 run stopped (process killed, verified). Diagnosis: worse even with full-scene anchors
+and target (re 0.701, line 0.876). Cause = training-set design: pairs / triples were taken from neighbouring DATE INDICES
+(a within 2-3 slots, b within 2 slots); with 8 mostly cloudy dates added, most pixels have no value in those slots ->
+re-analysis triples 1.02 M -> 0.57 M and long training gaps lost. Not a data problem.
+FIX 1b (pre-registered now, before the result): training pairs / triples from each PIXEL's own previous 1-3 / next 1-2
+kept clear dates (same caps per group: live 40,000, re-analysis 30,000), in the v2 test and the v2 weekly production.
+Rule: adopt v2 series if, LAI, re-analysis RMSE >30 d and 16-30 d each <= fusion3 + 0.02 (0.525 / 0.313) and live >30 d
+<= 0.574; otherwise stay on v1 (fusion3 series) and report. Not a paired comparison (dataset differs) - disclosed.
+Result FIX 1b test (fusion4 rerun, 13:30): LAI re-analysis >30 d 0.423 (fusion3 0.505; limit 0.525) PASS;
+16-30 d 0.323 (fusion3 0.293; limit 0.313) FAIL by 0.010; live >30 d 0.544 (limit 0.574) PASS; <=15 d 0.272 (0.253).
+Wheat LAI >30 d 0.348 (fusion3 0.488), 16-30 d 0.194 (0.170). NDVI re-analysis >30 d 0.091 (0.102), 16-30 d 0.066 (0.063).
+RULE NOT MET (16-30 d) -> by the pre-registered rule the v1 series (fusion3) stays the official one. Not paired: the
+16-30 d hidden cases are harder in v2 (straight line 0.414 -> 0.446); ratio re-analysis / line unchanged (0.71 vs 0.72).
+No weekly v2 produced yet; owner to decide next step.
+
+## 2026-10-15 — Confirmation test v1 vs v2, PAIRED (owner OK; pre-registered before the result)
+Same hidden values for both: the fusion3 hiding (seed 70, on the 12 full-scene dates, first/last of a pixel never hidden).
+v2 = per-field clearness data (20 dates; the 8 partial dates are never hidden, only used as data) + per-pixel neighbour
+training (fix 1b); same folds. v1 = fusion3_check as it is. Script phase8c_fusion_physics.py `v2 paired` -> fusion5_*,
+compare_v1_v2.py. Compare on identical pixel-dates, grouped by the v1 gap class.
+Rule per target (LAI, NDVI) and gap class (16-30 d, >30 d), re-analysis and live: v2 used where its paired RMSE is lower
+AND lower for >= 4 of 6 main crops; otherwise v1 for that class. Production: the class is set by the v1 anchors
+(full-scene dates); uncertainty = paired RMSE of the chosen version. Then weekly series v2 and the example graph.
+Result PAIRED test (fusion5 + compare_v1_v2.py, 14:16; 2,323,672 identical hidden values):
+LAI re-analysis: <=15 d v1 0.253 / v2 0.271; 16-30 d v1 0.293 / v2 0.308 (v2 better 0/6 crops) -> v1;
+  >30 d v1 0.505 / v2 0.413 (6/6 crops; wheat 0.488 -> 0.342) -> v2. LAI live >30 d 0.554 -> 0.541 (6/6) -> v2.
+NDVI re-analysis >30 d 0.102 -> 0.089 (6/6) -> v2; <=30 d v1. Confirms the unpaired result: v2 wins long gaps,
+v1 wins medium gaps (likely: per-pixel training adds many long-gap examples, slightly diluting medium-gap fit).
+Production per the pre-registered rule: v1 for <= 30 d, v2 for > 30 d (classes by v1 anchors); choice_v1_v2.json.
+Result WEEKLY v2 (14:27, phase8f_combine.py): weekly_field_series_2024_v2.csv, 2,436 fields x 46 weeks; measured 21.5 %
+(v1 20.4 %), re-analysis 77.8 %, interpolated 0.8 %; 68 % of field-weeks use v2 values; median LAI uncertainty re-analysis
+0.41 (v1 0.51). Graph weekly_examples_2024_v2.png. Wheat 7493815: May-June plateau 2.9-3.3 (v1 3.2-3.65), step to the
+measured 2.34 on 24 June is 0.7 (v1 1.3). Note: v2 re-analysis is more uneven week to week (+-0.3, inside the band) ->
+candidate for later: light smoothing between neighbouring weeks (would need its own test).
+
+## 2026-10-15 — Smoothing test for v2 long-gap values (owner OK; pre-registered before the result)
+Script phase8g_smooth_test.py. Same paired hiding as fusion5 (fusion3 hidden values), v2 data + per-pixel training,
+re-analysis model only, 5 folds by field. For each hidden pixel-date t (anchors a, b) predict at t-14, t-7, t, t+7, t+14
+days; a neighbour outside (a, b) takes the anchor value (as a measured week would in production; disclosed approximation).
+Candidates: S0 none; S1 weights 1-2-1 (t-7, t, t+7); S2 weights 1-2-3-2-1 (t-14 .. t+14).
+Evaluated on hidden values with v1 gap class > 30 d (where v2 is used). Rule per target (LAI, NDVI): adopt the better of
+S1 / S2 if its RMSE is lower than S0 by >= 0.005 (LAI) / 0.001 (NDVI) AND lower for >= 4 of 6 main crops; else no smoothing.
+Also reported: week-to-week roughness (mean |p(t+7) - 2 p(t) + p(t-7)|) for S0 / S1 / S2. Production: smoothing only on
+re-analysis weeks that use v2; measured weeks never changed.
+Note (before the run): S2 roughness not reported (needs predictions to +-28 d); roughness for S0 / S1 only.
+
+## 2026-10-15 — Owner decision: physics OUT of the fusion (consistent strategy)
+Physics (crop model) enters ONLY in the assimilation; the fusion is satellite-only (S2 + S1) for all crops and both
+targets. Smoothing test (physics version) stopped before any result (process killed, verified).
+Pre-registered re-run, same rules as before:
+- Paired test v1 vs v2 without physics: v1 = fusion2_check (both orbits + filter, no physics; same hidden draws as fusion3);
+  v2 = phase8c_fusion_physics.py `v2 paired nophys` -> fusion6_*; compare_v1_v2.py `nophys` -> choice_v1_v2_nophys.json.
+  Rule per target / gap class / method as in the paired test above.
+- Smoothing test without physics: phase8g_smooth_test.py `nophys` -> smooth_*_nophys; same rule as pre-registered.
+- Weekly series satellite-only: phase8d `` (v1) and `v2` without `physics` -> *_sat files; combine -> weekly_field_series_2024_sat.csv
+  (+ smoothing if adopted); graph weekly_examples_2024_sat.png. Previous physics series kept for reference only.
+Result PAIRED test satellite-only (fusion2 vs fusion6, 16:49; 2,323,672 identical hidden values):
+LAI re-analysis <=15 d 0.252 / 0.271, 16-30 d 0.293 / 0.306 (0/6) -> v1; >30 d 0.510 / 0.414 (6/6; wheat 0.504 -> 0.354) -> v2.
+LAI live >30 d 0.561 / 0.544 (5/6) -> v2. NDVI >30 d re-analysis 0.101 / 0.090 (6/6) -> v2; <=30 d v1.
+Same picture as with physics; without physics wheat >30 d is 0.354 (with physics 0.342) - the cost of the consistent design.
+Result SMOOTHING test satellite-only (17:16, smooth_summary_nophys.csv): NOT ADOPTED (LAI and NDVI).
+LAI >30 d: S0 0.415, S1 0.433, S2 0.450; worse for 6/6 crops (wheat 0.353 -> 0.369). Roughness S0 0.36 -> S1 0.12 LAI.
+NDVI: S0 0.0896, S1 0.0907, S2 0.0930 (0/6). Smoothing makes curves 3x calmer but less accurate: it flattens real
+changes (peaks, fast senescence). Final series: no smoothing.
+Result FINAL weekly series satellite-only (17:30): weekly_field_series_2024_sat.csv, 2,436 fields x 46 weeks; measured 21.5 %,
+re-analysis 77.8 %, interpolated 0.8 %; v2 values on 68 % of field-weeks (long gaps), v1 elsewhere; no smoothing; no physics.
+Median LAI uncertainty: measured 0.15, interpolated 0.32, re-analysis 0.41. Graph weekly_examples_2024_sat.png.
+Wheat 7493815: May-June 2.95-3.29, 17 June 2.86 -> measured 2.34 on 24 June (step 0.5; v1 1.3). THIS is the official
+fusion output for the assimilation step (physics enters there only).
+Delivery (no method change): weekly 10 m maps maps_weekly/lai_*.png (46 weeks, LAI + source), overview weekly_maps_overview_2024.png, final pixel series weekly_pixel_final_2024_sat.npz; example graph redrawn (month axis, clearer legend). map_weekly.py.
+
+## 2026-10-15 — Step 2: satellite assimilation, WHEAT, pilot 2024 (owner OK; pre-registered before any result)
+Script phase9_assim_wheat.py. Crop model = field model v4 PRIOR ensemble (3,000 members, the field's 1 km HYRAS weather
+group, soil prior from BK50 as v3/v4; physics enters ONLY here). Observations = final satellite-only weekly series
+(weekly_field_series_2024_sat.csv), wheat fields with a weather cell; Dec / Jan dropped (as v4); weights = v4 / v3
+(Student-t, OBS_ERR 0.5 in quadrature, tempering to ESS >= 50). Variants:
+  P  prior only (no satellite)          B  measured weeks only (clear S2, sd 0.15)
+  C  all weekly values (measured 0.15 + radar-filled / interpolated with their test uncertainty)
+Test (look-ahead, the assimilation's job): cut dates 04-01, 05-01, 06-01. Use only weeks before the cut; for C only
+weeks up to the last measured week before the cut (re-analysis weeks after it used a later anchor -> excluded, no
+leak). Predict green LAI at every LATER measured week of the field (until model maturity). Baseline: persistence (last
+measured value before the cut). Metric: RMSE and bias over field-weeks, per cut.
+Rules: assimilation useful if B or C beats P AND persistence at >= 2 of 3 cuts. C preferred over B if C RMSE lower at
+>= 2 of 3 cuts. Production (all weeks) with the preferred variant: per field yield (rescaled to the district model as
+v4), p10 / p90, ET (eta), LAI max, posterior weekly LAI. No field yield truth -> yields are reported, not validated.
+Result ASSIMILATION wheat (18:20, assim_wheat_log.txt / assim_wheat_check.csv; 582 fields):
+ cut   n    persistence  prior P  B (measured)  C (all weekly)   bias P / B / C
+ 04-01 1509  1.864       1.322    0.801         0.733            +1.07 / +0.43 / +0.26
+ 05-01  836  0.737       1.042    0.671         0.677            +0.71 / -0.31 / -0.33
+ 06-01  587  0.958       0.771    0.787         0.791            +0.39 / -0.43 / -0.44
+ RULE: assimilation USEFUL (B and C beat prior and persistence at 2/3 cuts: 04-01, 05-01; NOT at 06-01).
+ C better than B at 1/3 cuts (only 04-01) -> preferred B (measured weeks only) by the rule.
+ Production B (bug fixed in the weekly output loop: day index beyond the ensemble length): median ESS 298;
+ posterior LAI max median 2.87 (prior 4.24; prior too high, as found before); field yield 10/50/90 % 7.05 / 8.10 / 9.11 t/ha;
+ ET 309 / 327 / 340 mm. Yields scaled so area-weighted field mean = district model (05358 8.53, 05370 7.80 t/ha);
+ official 2024 district yields 7.18 / 7.07 -> LEVEL inherits the district model's 2024 error (+1.35 / +0.73); the
+ assimilation adds the differences BETWEEN fields (not validated: no field yields). Graph assim_wheat_examples_2024.png.
+ Notes for later: after 1 June posterior is biased low (-0.43; early senescence in the model); pre-sowing weeks
+ (previous crop / cover crop) are outside the model and ignored.
+
+## 2026-10-15 — Fix early leaf ageing in the wheat assimilation (owner OK; pre-registered before any result)
+Diagnosis (no test result used): model maturity for all pilot wheat = day 255 after sowing 18 Oct 2023 = 29 June 2024;
+phenology model heading 2024 doy 134.6 / 133.1 vs DWD observed 139.5 / 141 (05358 / 05370), yellow ripe 184 / 181 vs
+184 / 191. Posterior dev_f stays at 1.00 (data before June cannot see the timing); members picked for the lower May
+LAI also decline earlier -> -0.43 bias after 1 June.
+Variants (script phase9b_assim_ageing.py; variant B = measured weeks only, as adopted):
+  B0  current
+  B1  heading-corrected calendar: development scaled per district so heading falls on the DWD-OBSERVED 2024 heading date,
+      used only for cut dates AFTER that heading date (06-01); earlier cuts = B0. Stand-in for in-season DWD
+      'Sofortmelder' reports (we use the annual reports; disclosed).
+  B2  wider timing range: dev_f 0.88-1.12 (was 0.94-1.06), same Latin-hypercube draws stretched.
+  B3  B1 + B2.
+Same look-ahead test (cuts 04-01, 05-01, 06-01), targets fixed to the B0 target set (later measured weeks until B0
+maturity) so all variants are scored on identical field-weeks.
+Rule: adopt the variant with the lowest RMSE at 06-01 if it beats B0 there by >= 0.03 AND |bias| at 06-01 is smaller
+AND it is not worse than B0 by > 0.02 at 04-01 or 05-01; otherwise keep B0.
+Also (report only, 1 year x 2 districts = weak evidence): district level of field yields vs official 2024 for
+(i) scaled to district model (current), (ii) raw posterior physics yield.
+Result AGEING fix (18:50, ageing_log.txt / ageing_check.csv; identical target field-weeks):
+ cut   B0 / B1 / B2 / B3 RMSE                 bias B0 / B1 / B2 / B3
+ 04-01 0.801 / 0.801 / 0.807 / 0.807          +0.43 / +0.43 / +0.50 / +0.50
+ 05-01 0.671 / 0.671 / 0.626 / 0.626          -0.31 / -0.31 / -0.25 / -0.25
+ 06-01 0.787 / 0.844 / 0.735 / 0.848          -0.43 / +0.49 / -0.36 / +0.53
+ RULE: ADOPT B2 (dev_f 0.88-1.12): 06-01 -0.052, |bias| smaller, 04-01 +0.006 (within 0.02), 05-01 better.
+ B1 (heading-corrected) overshoots: scaling development to the observed heading moved maturity to 11-12 July
+ (observed yellow ripeness 2 / 9 July) -> too green late June. Fix is PARTIAL: bias after 1 June still -0.36.
+Production with B2 (phase9c_assim_run.py): median ESS 254; field yield 10/50/90 % 6.86 / 8.04 / 9.35 t/ha (scaled);
+ ET 304 / 331 / 356 mm. Yield LEVEL report (1 year x 2 districts, weak): official 7.18 / 7.07; scaled to district
+ model 8.53 / 7.80; raw posterior physics 7.62 / 7.52 t/ha -> satellite-corrected physics closer this year (+0.44 / +0.45
+ vs +1.35 / +0.73). Not adopted on this evidence; needs a multi-year check.
+
+## 2026-10-16 — Multi-year + multi-area data (owner OK for all 19 area-seasons; pre-registered before download)
+Areas (8 x 8 km, EPSG:25832, lower-left x / y): pilot 304000 / 5648000; A selhausen 316000 / 5634000 (ICOS DE-RuS,
+ground LAI); B north 288000 / 5656000 (maize 23 %); C south 328000 / 5608000 (barley, rapeseed, grassland 21 %).
+Seasons (Oct prev year - Aug): pilot 2021, 2022, 2023, 2025; A / B / C 2021-2025 = 19 area-seasons (field register 2021-2026).
+Downloads: Sentinel-2 L2A + Sentinel-1 GRD both orbits from CDSE openEO, same jobs as pilot 2024 (estimate ~20 credits,
+~0.75 GB per area-season, total ~380 credits / ~14 GB); Landsat 8 + 9 Collection 2 L2 (6 bands + QA_PIXEL) from Microsoft
+Planetary Computer (free, ~1 GB). Order: pilot 2023 first as a chain check, then the rest. Scripts areas.py,
+phase10_download.py (S2/S1), phase10_landsat.py. Checks after the first download: S2 processing baseline 04.00
+(offset since 25 Jan 2022) consistent across seasons; file counts; credits per job. Stopped jobs verified on the server
+and locally.
+Purpose (pre-registered): retrain + test the satellite-only fusion with leave-one-YEAR-out and leave-one-AREA-out;
+Landsat as extra measured dates (own PROSAIL network for OLI bands, cross-check with S2 on same-day pairs);
+ground-LAI check at Selhausen.
+Chain check pilot 2023 (10:46): S2 37 files 5 credits, S1 asc 55 / desc 56 files 5 + 5 credits, 0.85 GB; S2 scale consistent with 2024 [correction 10:58: those numbers were band B05, not red - wrong band index in a quick check]. Landsat all 20 area-seasons: 1,277 scenes, 1.0 GB. Starting the remaining 18 S2/S1 area-seasons.
+Check 10:58 S2 scale across the Jan-2022 processing change (pilot, clear dates, B04 / B08): 2021 red median 500-1040, 1st pct 88-595, NIR 1950-4320; 2023 red 425-980, 1st pct 52-488, NIR 2200-4255; 2024 similar -> no +1000 offset in any season (CDSE harmonised); no correction needed.
+Result 11:00: fields for all 19 new area-seasons (phase10_fields.py, fields_all_log.txt): 1,538-2,770 fields per area-season, area check median |diff| 0.02-0.03 %. Landsat network (phase10_landsat_net.py): unseen simulations LAI RMSE 0.931, R2 0.791, 90 % range 93 % (S2 network: 0.863 / 0.821 / 92 %) -> slightly weaker (6 bands, no red-edge), as expected. Next: cross-check Landsat vs S2 on same-day pairs before using Landsat as measured dates.
+
+## 2026-10-16 — Landsat vs Sentinel-2 cross-check (pre-registered before the result)
+fv2.py = pipeline for any area-season (same methods; S2 output s2_pixels_fv2.npz, Landsat landsat_pixels.npz).
+Pairs: Landsat and S2 dates <= 1 day apart, field means (main-field pixels, area shares) where both are clear on >= 50 %
+of the field. Training seasons for the check: pilot 2023 + 2024 now, all seasons later. Report bias, RMSE, r (LAI, NDVI).
+Rule: Landsat used as 'measured' if field-mean LAI |bias| <= 0.2 and RMSE <= 0.45 (S2 retrieval sd ~0.15 + 30 m mixing);
+if only the bias fails, a linear correction (Landsat -> S2) fitted on other seasons is applied and re-checked on the held-out
+season; otherwise Landsat stays out.
+Result 11:21 (phase11_landsat_check.py, landsat_check.csv; pilot 2023 + 2024, 11 pair dates, 14,015 field-dates):
+LAI bias +0.047, RMSE 0.322, r 0.953 (2023: +0.055 / 0.315; 2024: +0.042 / 0.326) -> RULE MET: Landsat LAI used as measured
+(no correction). NDVI had no pre-registered rule: bias +0.040, RMSE 0.121, r 0.896 -> Landsat NDVI NOT used yet.
+Post-hoc per date (disclosed): 2023-02-07 (winter, 411 fields) NDVI bias +0.55, r 0.08 and LAI r 0.15 -> one sensor's mask
+misses frost/snow/wet soil in winter; partly clear autumn dates with few fields (Oct 2022 / Oct 2023, 64-65 fields) LAI bias
+-0.55 (haze near clouds). Summer dates agree well (LAI RMSE 0.23-0.32, r 0.94-0.98). To pre-register before use: winter
+(Nov-Feb) Landsat dates and partly-clear dates with < 200 fields excluded or down-weighted.
+
+## 2026-10-16 — Fusion test across YEARS (first: pilot 2023 <-> 2024; pre-registered before any result)
+Script phase11_fusion_test.py (satellite-only fusion; per-pixel neighbour training (fix 1b) for all gap classes;
+features as adopted: radar both orbits + speckle filter, field level, rolling 3; crop, season sin/cos, days since model
+heading, rain; LAI and NDVI). Hidden: 30 % of clear S2 pixel-dates per season (seed 70; never a pixel's first / last).
+  E1 within-year: train on the season's kept values of the other 4 field folds (5 folds by field), test hidden of the fold.
+  E2 across-year: train on ALL kept values of the OTHER season, test hidden of this season (anchors from this season).
+  E3 = E2 + Landsat LAI as extra measured dates (anchors and training; S2 preferred on the same day); NDVI S2 only.
+Training rows capped at 3 M per model (random, seed 7; memory). Score on identical hidden S2 values; gap class by the
+S2-only anchors. Methods scored: straight line, re-analysis, live.
+Rules: (a) YEAR-ROBUST if E2 re-analysis RMSE in 16-30 d and > 30 d <= E1 + 0.05 (LAI) / + 0.01 (NDVI) and E2 beats the
+line in both classes, for both test seasons; (b) Landsat ADOPTED if E3 LAI RMSE (all hidden) < E2 in both test seasons.
+Note (before the run): training rows capped at 1.5 M per season and model (3 M when two seasons train one model); float32 (memory).
+11:45 Session ended at ~11:30 and stopped the local runs (downloads, cross-year test; no results lost; pilot 2025 jobs had finished on the server). Restarted DETACHED (Start-Process): downloads pilot 2025 + 15 area-seasons (download_rest_log.txt), cross-year test (fusion_cross_log.txt).
+Owner decision (pre-registered before any result): the DECIDING test is LEAVE-ONE-SEASON-OUT on the pilot area, 5 seasons
+2021-2025 (each season tested once with a model trained on the other 4), same experiments E1 / E2 / E3 and the same rules,
+applied to every test season. The running 2023 <-> 2024 run is a first look / code check only. Memory: training rows per
+season = 3 M / (number of training seasons) per model. Afterwards: leave-one-AREA-out (train on 3 areas, test on the 4th).
+12:28 Runs stopped again ~12:15 (app ends child processes even with Start-Process). Restarted via WMI (Win32_Process.Create, independent of the app): downloads (pilot 2025 rest + 15 area-seasons) and run_pilot5.py chain (retrieval pilot 2021/2022/2025 -> 2-season first look -> 5-season leave-one-season-out). Cross test now saves each finished part (cross_parts/) and resumes; the earlier LAI parts of the 2-season run were lost (results only kept in memory) and are recomputed.
+12:40 Found: pilot 2025 S1 ascending only partly downloaded (44 files) when the run stopped at 12:15; restart skipped it (check was 'any .tif'). Fix: download script now skips only folders with a '.complete' marker (written after a full download); markers set for all downloads whose logged file count matches the disk; pilot 2025 S1 asc re-downloaded from the finished server job (no new credits). Seasons downloaded by the still-running old process get markers from the log afterwards.
+12:44 Fixes: syntax error in the marker line of phase10_download.py (fixed, parse-checked); a second download process cannot append to the log held by the first (Windows file lock) -> own log download_p25_log.txt; old chain stopped (waited for a log line that now goes elsewhere), replaced by run_pilot5b.py (waits for the 2-season summary + pilot 2025 '.complete' markers, then retrieval 2025 + 5-season test). Running: downloads (2304), pilot 2025 S1 asc (8172), 2-season test (11968), chain b (8360).
+
+## 2026-10-16 — Cross-year problem found; feature variants for the 5-season test (pre-registered before 5-season results)
+First look (pilot, LAI, test 2023, S2 only), seen BEFORE this entry: E1 within-year re-analysis 0.316 / 0.375 / 0.575
+(<=15 / 16-30 / >30 d; line 0.404 / 0.488 / 0.939); E2 trained on 2024 only: 0.538 / 0.626 / 0.900 -> worse than the line
+for <= 30 d. Errors are date-specific (Nov -0.5 to -1.5, Apr +0.5 to +1.1, mid-June -0.3): the model learned the 2024
+calendar pattern (time-of-year features), which does not transfer to another year. 2-season run stopped (rest not needed).
+5-season leave-one-season-out test (pilot 2021-2025, S2 only first), variants of the re-analysis / live features:
+  V0 as before (radar, anchors, gap / position, crop, season sin/cos, days since model heading, rain)
+  V1 without season sin/cos
+  V2 without season sin/cos, days since heading and rain (radar + anchors + gap / position + crop only)
+E1 (within-season, 5 folds) with V0 as the reference; E2 (train on the other 4 seasons) for V0, V1, V2.
+Rule: the variant with the lowest mean E2 LAI re-analysis RMSE (> 30 d, mean over the 5 test seasons) is chosen; it is
+YEAR-ROBUST if for every test season E2 <= E1 + 0.05 in 16-30 d and > 30 d AND E2 beats the line in all three gap
+classes; NDVI checked the same way (tolerance 0.01). Landsat (E3) is then tested with the chosen variant only.
+
+## 2026-10-16 13:30 — TEST DESIGN FLAW found (logged before further results)
+Seen so far: pilot 2021 LAI re-analysis, E1 0.442 / 0.579 / 0.518 (<=15 / 16-30 / >30 d), E2_V0 0.520 / 0.721 / 0.721,
+E2_V1 0.496 / 0.704 / 0.664, E2_V2 0.495 / 0.716 / 0.684, line 0.517 / 0.728 / 0.842.
+Diagnosis: all within-season tests so far (fusion v1-v4, fusion5/6 paired tests, smoothing, E1) hid RANDOM 30 % of
+pixel-dates. On a hidden date ~70 % of the other fields stayed clear, and the model learned that date's offset from
+them (date features or date proxies: season sin/cos, days since heading, gap + position + rain). Evidence: pilot 2023
+E1 per-date bias ~0 where the line was off by +0.92 (18 March). Real clouds hide a date for ALL fields, so those
+within-season RMSEs (e.g. 0.41 vs line 0.91, > 30 d) OVERSTATE the radar's real benefit. The across-season tests (E2) are
+not affected (other seasons).
+Consequences (pre-registered now):
+  - New honest within-season reference E1b: hide 30 % of the S2 DATES entirely (all pixels of a hidden date; never a
+    season's first / last date; seed 70), 5 folds by field as before; only for the chosen variant.
+  - Rule for the 5-season test amended: the chosen variant is YEAR-ROBUST if, for every test season, E2 beats the line
+    in 16-30 d and > 30 d and E2 <= E1b + 0.05 (LAI) / + 0.01 (NDVI). The E1 comparison is reported but no longer decides.
+  - Earlier reported within-season numbers to be labelled 'optimistic (random pixel-date hiding)' in all summaries.
+Addition (13:31, before results): mode e1b also runs E2b = across-season with the same whole-date hiding, so E1b vs E2b compare the same hidden values; the year-robust rule uses E2b <= E1b + tol and E2b beats the line (E2 with random hiding reported alongside).
+14:07 Fix for later runs: test parts written to .part then renamed (a stop mid-write can no longer leave a half file that counts as done). The running 5-season process uses the previous code; its finished parts will be checked for completeness (gzip read) before the summary.
+Result 5-SEASON LEAVE-ONE-SEASON-OUT, pilot, S2 only (16:29; fusion_cross_summary_pilot2021_..._pilot2025.csv), mean of 5 test seasons:
+ LAI re-analysis  <=15 / 16-30 / >30 d: line 0.384 / 0.532 / 0.812; E1 (optimistic) 0.310 / 0.394 / 0.481;
+                  E2_V0 0.410 / 0.550 / 0.666; E2_V1 0.400 / 0.555 / 0.649; E2_V2 0.387 / 0.525 / 0.649
+ NDVI             line 0.063 / 0.085 / 0.152; E1 0.053 / 0.064 / 0.084; V0 0.068 / 0.086 / 0.117; V1 0.069 / 0.086 / 0.127;
+                  V2 0.063 / 0.081 / 0.116
+ Chosen by the rule: V1 (mean > 30 d 0.6488 vs V2 0.6488 - a TIE to 4 decimals, decided by float order; no tie-break was
+ pre-registered; V2 is better or equal in every other class and for NDVI - disclosed).
+ Old rule (vs optimistic E1, and beat the line in all classes): NOT year-robust in any season (LAI and NDVI) - expected
+ after the 13:28 finding; the deciding check is the amended rule with E1b / E2b (date-blocked), running next.
+ Reading: across years the radar re-analysis helps for gaps > 30 d (-20 % LAI, -24 % NDVI vs the line) in every season;
+ for gaps <= 30 d it is no better than the line (V0 / V1 slightly worse).
+
+## 2026-10-16 — Owner decision: V1 vs V2 chosen on Landsat + LAI + NDVI together (pre-registered before E3 results)
+E3 (S2 + Landsat LAI, trained on the other 4 seasons) is run for BOTH V1 and V2. NDVI uses S2 only (Landsat NDVI not adopted).
+Score per variant = mean over the 5 test seasons and the 3 gap classes of (re-analysis RMSE / line RMSE), computed
+separately for LAI (E3) and NDVI (E2); the variant with the lower AVERAGE of the LAI and NDVI scores is chosen
+(lower = more gain over the straight line). That variant is then used for the fair date-blocked test (E1b / E2b).
+Landsat adopted if, for the chosen variant, E3 < E2 (all hidden LAI values) in every test season (rule as before).
+17:01 Chain d stopped (would have run E1b with V1 at once); chain e: Landsat test V1 (running, chain c) -> Landsat test V2 -> 'choose' (rule 16:59) -> E1b / E2b with the chosen variant.
+Result 18:04 (rule 16:59): Landsat (E3) NOT adopted for V1 (17:16) nor V2 (18:01): E3 < E2 not in every season (helps some
+long gaps, e.g. 2022 > 30 d 0.66 -> 0.59; hurts short gaps, e.g. 2024 <= 15 d 0.33 -> 0.43: Landsat anchors carry 30 m
+mixing / winter / haze errors not yet filtered). Variant score (re-analysis / line, mean over 5 seasons x 3 gap classes):
+V1 LAI(E3) 1.006, NDVI(E2) 0.981 -> 0.993; V2 LAI(E3) 0.970, NDVI(E2) 0.910 -> 0.940 -> CHOSEN V2 (radar + anchors +
+gap / position + crop; no calendar, heading or rain). Fair date-blocked test E1b / E2b with V2 now running.
+18:48 ALL DOWNLOADS COMPLETE: 4 areas x 5 seasons S2 + S1 asc / desc ('.complete' markers verified against logged file counts; pilot 2024 from the earlier run). Selhausen 2021 S2 was only partly downloaded (20 of 43 files; interrupted run + old skip check) -> re-fetched from the finished job (43 files). Credits: 337 logged + 5 (re-fetch) = 342 (estimate 380; one S1 job cost 29 after a long server queue). Raw data 22 GB. Landsat: 1,277 scenes, 1.0 GB, free.
+Result FAIR TEST, pilot 5 seasons, V2, whole S2 dates hidden (E1b within-season, E2b across-season; same hidden values), 20:27:
+ LAI  mean <=15 / 16-30 / >30 d: line 0.488 / 0.491 / 0.645; E1b 0.478 / 0.505 / 0.613; E2b 0.487 / 0.492 / 0.556
+ NDVI                            line 0.073 / 0.081 / 0.125; E1b 0.076 / 0.084 / 0.116; E2b 0.072 / 0.080 / 0.110
+ Transfer (E2b <= E1b + tol): LAI all 15 season x class cells; NDVI 14 / 15 (2022 <= 15 d).
+ Beats the line, > 30 d: LAI and NDVI in ALL 5 seasons (LAI -3 to -23 %, mean -14 %; NDVI mean -12 %).
+ Beats the line, 16-30 d: LAI 3 / 5, NDVI 3 / 5 (differences 0.00-0.03 LAI).
+ AMENDED RULE (16-30 and > 30 d in every season): NOT year-robust, for LAI and NDVI (fails in 16-30 d only).
+ Reading: V2 no longer overfits a season (across-season = within-season). The radar adds value only for gaps > 30 d,
+ reliably in every season; for gaps <= 30 d it equals the straight line. Proposed design (to pre-register before use):
+ straight line for gaps <= 30 d, V2 re-analysis for gaps > 30 d. All earlier within-season numbers (fusion v1-v6, smoothing,
+ assimilation uncertainty) were optimistic (random pixel-date hiding) and are superseded by these.
+
+## 2026-10-16 — AREA test (owner OK; pre-registered before any result)
+Data: 4 areas (pilot, selhausen, north, south) x 5 seasons (2021-2025) = 20 area-seasons; S2 only; fusion variant V2
+(radar both orbits + anchors + gap / position + crop; no calendar, heading or rain).
+Test (strictest = a new area in a new year): for every test area-season (A, Y) the V2 models (live + re-analysis) are trained
+on the 12 area-seasons of the OTHER 3 areas in the OTHER 4 seasons; test values = whole S2 dates hidden (30 %, seed 70,
+never a season's first / last date; same rule as E1b / E2b). Training rows from each training area-season's kept values
+(its own date hiding, as E2b), at most 250,000 rows per model and area-season (3 M per model).
+Methods scored per gap class: straight line, V2 re-analysis, and the DESIGN = line for gaps <= 30 d, V2 for gaps > 30 d.
+Rules: (1) DESIGN ADOPTED if V2 beats the line for gaps > 30 d in every AREA (mean over its 5 seasons) and in >= 16 of the
+20 area-seasons, for LAI and for NDVI. (2) Reported: per area and season tables; transfer penalty vs the pilot
+across-season result (E2b, same design).
+Scripts: phase12_area_rows.py (training rows per area-season), phase12_area_test.py (fits + evaluation, resumable parts).

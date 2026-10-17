@@ -6,11 +6,14 @@ Per S2 date (one GeoTIFF, bands B02..B12, SCL, 4 angle bands; same 800 x 800 gri
   PROSAIL network (prosail_net.pt, unchanged) -> lai, cab, ccc, cbrown with sd; NDVI from B04 / B08.
 Only pixels touching an NRW field (step 1). Output data/processed/field_v2/pilot_2024/s2_pixels.npz
 (dates, rows, cols, lai, lai_sd, ndvi, ccc as [dates x pixels], NaN = not clear).
+Option `perfield` (fix 1, pre-registered 2026-10-15): on scenes < 20 % clear, keep the clear pixels of fields that are
+>= 50 % clear by area (main field per pixel, step-1 shares) -> s2_pixels_v2.npz (check 2d skipped).
 Check 2d: per wheat field, area-weighted pixel LAI (step-1 shares) vs the existing field-mean retrieval
 (retrieval_115_2024.csv, from inward-shrunk outlines) on the same dates.
 """
 import glob
 import os
+import sys
 
 import numpy as np
 import pandas as pd
@@ -24,12 +27,18 @@ P = os.path.join("data", "processed")
 RAW = os.path.join("data", "raw", "field_v2", "pilot_2024", "s2")
 OUT = os.path.join(P, "field_v2", "pilot_2024")
 BAD = (3, 8, 9, 10, 11)
+PERFIELD = "perfield" in sys.argv
 
 
 def main():
     px = pd.read_csv(os.path.join(OUT, "pixels_nrw.csv.gz"))
     upix = px[["row", "col"]].drop_duplicates().sort_values(["row", "col"]).reset_index(drop=True)
     rows, cols = upix["row"].values, upix["col"].values
+    mainf = px.sort_values("share").drop_duplicates(["row", "col"], keep="last").set_index(["row", "col"])
+    key = pd.MultiIndex.from_arrays([rows, cols])
+    pfid, pshare = mainf["field_id"].reindex(key).values, mainf["share"].reindex(key).values
+    _, pinv = np.unique(pfid, return_inverse=True)
+    ftot = np.bincount(pinv, weights=pshare)
     ck = torch.load(MODEL, weights_only=False)
     net = Net(len(BANDS) + 3, len(TARGETS))
     net.load_state_dict(ck["state"])
@@ -42,9 +51,18 @@ def main():
         bad = binary_dilation(np.isin(scl, BAD), iterations=2)
         clear = np.isin(scl, (4, 5)) & ~bad & np.all(np.isfinite(a[:10]), axis=0)
         c = clear[rows, cols]
-        if d.month in (12, 1) or c.mean() < 0.2:
-            print(f"{d.date()}: clear {100 * c.mean():.0f} % of field pixels - skipped", flush=True)
+        if d.month in (12, 1):
             continue
+        if c.mean() < 0.2:
+            if not PERFIELD:
+                print(f"{d.date()}: clear {100 * c.mean():.0f} % of field pixels - skipped", flush=True)
+                continue
+            fclear = np.bincount(pinv, weights=pshare * c, minlength=len(ftot)) / ftot
+            c = c & (fclear[pinv] >= 0.5)                        # fix 1: clearness per field
+            if not c.any():
+                print(f"{d.date()}: no field >= 50 % clear - skipped", flush=True)
+                continue
+            print(f"{d.date()}: scene < 20 % clear, {int((fclear >= 0.5).sum())} fields >= 50 % clear kept", flush=True)
         refl = a[:10, rows, cols].T / 10000.0
         sza, vza = a[11, rows, cols], a[12, rows, cols]
         raa = np.abs(a[13, rows, cols] - a[14, rows, cols]) % 360
@@ -61,8 +79,10 @@ def main():
         for k, v in (("lai", lai), ("lai_sd", sd), ("ndvi", ndvi), ("ccc", ccc)):
             out[k].append(v.astype(np.float32))
         print(f"{d.date()}: clear {100 * c.mean():.0f} %, median LAI {np.nanmedian(lai):.2f}, NDVI {np.nanmedian(ndvi):.2f}", flush=True)
-    np.savez_compressed(os.path.join(OUT, "s2_pixels.npz"), dates=np.array(dates, dtype="datetime64[D]"), rows=rows,
+    np.savez_compressed(os.path.join(OUT, "s2_pixels_v2.npz" if PERFIELD else "s2_pixels.npz"), dates=np.array(dates, dtype="datetime64[D]"), rows=rows,
                         cols=cols, **{k: np.stack(v) for k, v in out.items()})
+    if PERFIELD:
+        return
     # check 2d: wheat fields, pixel-based field mean vs the existing field-mean retrieval
     fl = pd.read_csv(os.path.join(OUT, "fields_nrw.csv"))
     wheat = set(fl.loc[fl["crop"].str.contains("Winterweichweizen", na=False), "field_id"])

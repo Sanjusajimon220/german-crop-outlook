@@ -11,8 +11,11 @@ Models: the adopted fusion versions, refitted on ALL clear pixel-dates of 2024 (
 physics features for wheat if adopted). Field value = area-weighted mean of its pixels (main-field pixels, step-1
 shares); source = the source of most of the field's area; uncertainty = test RMSE of that source and gap class
 (fusion test tables). Output field_v2/pilot_2024/weekly_field_series_2024.csv
-Run `python phase8d_weekly_series.py [physics]`.
+Run `python phase8d_weekly_series.py [physics] [v2]`.
+Option `v2` (fix 1 + fix 2, 2026-10-15): s2_pixels_v2.npz, wheat LAI re-analysis bent to the physics shape
+(fix2_params.json), uncertainties from fusion4_summary.csv -> weekly_*_2024_v2.*
 """
+import json
 import os
 import sys
 
@@ -20,7 +23,7 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import HistGradientBoostingRegressor
 
-from phase7_step3_s1proxy import CROPS, context, prev_next
+from phase7_step3_s1proxy import CROPS, context, neighbours, pixel_groups, prev_next
 from radar_tools import field_radar as orbit_radar
 
 P = os.path.join("data", "processed")
@@ -30,6 +33,9 @@ RADAR = ["VV", "VH", "RAT", "RVI"]
 ORBITS = {"asc": "s1", "desc": "s1_desc"}
 PHYS_ARG = "physics" in sys.argv          # physics features for LAI only (adopted 2026-10-15; NDVI without)
 PHYS = False
+V2 = "v2" in sys.argv
+SFX = ("_v2" if V2 else "") + ("" if PHYS_ARG else "_sat")      # _sat = satellite-only (owner decision 2026-10-15)
+SUMMARY = ("fusion4_summary.csv" if PHYS_ARG else "fusion2_summary.csv") if V2 else ("fusion3_summary.csv" if PHYS_ARG else "fusion2_summary.csv")
 
 
 def nearest(dates, d, tol=3):
@@ -38,7 +44,8 @@ def nearest(dates, d, tol=3):
 
 
 def main():
-    z = np.load(os.path.join(OUT, "s2_pixels.npz"))
+    z = np.load(os.path.join(OUT, f"s2_pixels{'_v2' if V2 else ''}.npz"))
+    fx = json.load(open(os.path.join(OUT, "fix2_params.json"))) if V2 else None
     s2d, rows, cols = pd.DatetimeIndex(z["dates"]), z["rows"], z["cols"]
     px = pd.read_csv(os.path.join(OUT, "pixels_nrw.csv.gz"))
     fl = pd.read_csv(os.path.join(OUT, "fields_nrw.csv"))
@@ -98,7 +105,7 @@ def main():
         return pd.DataFrame(d)
 
     rng = np.random.default_rng(7)
-    rmse = pd.read_csv(os.path.join(OUT, "fusion3_summary.csv" if PHYS_ARG else "fusion2_summary.csv"))
+    rmse = pd.read_csv(os.path.join(OUT, SUMMARY))
     out = {}
     global PHYS
     for t in ("lai", "ndvi"):
@@ -108,7 +115,18 @@ def main():
         clear = np.isfinite(y)
         # production models on ALL clear values (pairs / triples along the S2 dates)
         L, Ly, R, Ry = [], [], [], []
-        for n, i in enumerate(si):
+        if V2:                                                   # fix 1b: each pixel's own neighbouring clear dates
+            pv, nx = neighbours(clear, 3)
+            for i in si:
+                for s in range(3):
+                    for (a,), idx in pixel_groups(i, clear[i], (pv[s],), 40000, rng):
+                        L.append(live_rows(i, a, idx, y)); Ly.append(y[i, idx] - y[a, idx])
+                for s in range(2):
+                    for u in range(2):
+                        for (a, b), idx in pixel_groups(i, clear[i], (pv[s], nx[u]), 30000, rng):
+                            lin = y[a, idx] + (days[i] - days[a]) / (days[b] - days[a]) * (y[b, idx] - y[a, idx])
+                            R.append(re_rows(i, a, b, idx, y)); Ry.append(y[i, idx] - lin)
+        for n, i in enumerate(si if not V2 else []):
             for a in si[max(0, n - 3):n]:
                 idx = np.flatnonzero(clear[i] & clear[a])
                 idx = rng.choice(idx, min(len(idx), 40000), replace=False) if len(idx) else idx
@@ -152,13 +170,18 @@ def main():
                     if days[bb] - days[aa] <= 15:
                         val[wi, idx], src[wi, idx] = lin, 2
                     else:
-                        val[wi, idx], src[wi, idx] = lin + mR.predict(re_rows(i, aa, bb, idx, y)), 3
+                        re = lin + mR.predict(re_rows(i, aa, bb, idx, y))
+                        if fx and PHYS:                          # fix 2: physics-shaped gap (wheat LAI)
+                            pos = (days[i] - days[aa]) / (days[bb] - days[aa])
+                            mdev = PRI[i, idx] - (PRI[aa, idx] + pos * (PRI[bb, idx] - PRI[aa, idx]))
+                            re = np.where(np.isfinite(mdev), re + fx["w"] * (lin + fx["k"] * mdev - re), re)
+                        val[wi, idx], src[wi, idx] = re, 3
                 else:
                     val[wi, idx], src[wi, idx] = y[aa, idx] + mL.predict(live_rows(i, aa, idx, y)), 4
         out[t] = (val, src, gapv, since)
         print(f"{t}: weekly pixel series {val.shape}; share measured {np.mean(src == 1):.2f}, interpolated "
               f"{np.mean(src == 2):.2f}, re-analysis {np.mean(src == 3):.2f}, live {np.mean(src == 4):.2f}", flush=True)
-    np.savez_compressed(os.path.join(OUT, "weekly_pixel_series_2024.npz"), weeks=np.array(weeks, dtype="datetime64[D]"),
+    np.savez_compressed(os.path.join(OUT, f"weekly_pixel_series_2024{SFX}.npz"), weeks=np.array(weeks, dtype="datetime64[D]"),
                         rows=rows, cols=cols, lai=out["lai"][0], lai_src=out["lai"][1], lai_gap=out["lai"][2],
                         lai_since=out["lai"][3], ndvi=out["ndvi"][0])
     aggregate(weeks, out, inv, fids, share, fl, rmse)
@@ -203,14 +226,14 @@ def aggregate(weeks, out, inv, fids, share, fl, rmse):
             col = {"interpolated": "interp", "re-analysis": "reanalysis", "live": "live"}[s]
             unc.append(float(lt.loc[str(gc(np.array([gp]))[0]), col]))
     res["lai_uncertainty"] = np.round(unc, 3)
-    res.to_csv(os.path.join(OUT, "weekly_field_series_2024.csv"), index=False)
+    res.to_csv(os.path.join(OUT, f"weekly_field_series_2024{SFX}.csv"), index=False)
     print(f"weekly field series: {res['field_id'].nunique()} fields x {res['week'].nunique()} weeks; source shares "
           f"{res['source'].value_counts(normalize=True).round(3).to_dict()}")
 
 
 if __name__ == "__main__":
     if "aggregate" in sys.argv:                       # reuse the saved pixel series
-        z = np.load(os.path.join(OUT, "weekly_pixel_series_2024.npz"))
+        z = np.load(os.path.join(OUT, f"weekly_pixel_series_2024{SFX}.npz"))
         px = pd.read_csv(os.path.join(OUT, "pixels_nrw.csv.gz"))
         fl = pd.read_csv(os.path.join(OUT, "fields_nrw.csv"))
         mainf = px.sort_values("share").drop_duplicates(["row", "col"], keep="last").set_index(["row", "col"])
@@ -218,7 +241,7 @@ if __name__ == "__main__":
         fid, share = mainf["field_id"].reindex(key).values, mainf["share"].reindex(key).values
         fids, inv = np.unique(fid, return_inverse=True)
         out = {"lai": (z["lai"], z["lai_src"], z["lai_gap"], z["lai_since"]), "ndvi": (z["ndvi"],)}
-        rmse = pd.read_csv(os.path.join(OUT, "fusion3_summary.csv" if PHYS_ARG else "fusion2_summary.csv"))
+        rmse = pd.read_csv(os.path.join(OUT, SUMMARY))
         aggregate(pd.DatetimeIndex(z["weeks"]), out, inv, fids, share, fl, rmse)
     else:
         main()

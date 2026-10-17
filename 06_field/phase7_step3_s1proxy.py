@@ -90,6 +90,31 @@ def prev_next(valid):
     return prev, nxt
 
 
+def neighbours(valid, k):
+    """Each pixel's own previous / next k valid time steps: two lists of k [time x pixel] arrays (-1 if none)."""
+    prev, nxt = prev_next(valid)
+    cols = np.arange(valid.shape[1])[None, :]
+    pv, nx = [prev], [nxt]
+    for _ in range(k - 1):
+        p, n = pv[-1], nx[-1]
+        pv.append(np.where(p >= 0, prev[np.maximum(p, 0), cols], -1))
+        nx.append(np.where(n >= 0, nxt[np.maximum(n, 0), cols], -1))
+    return pv, nx
+
+
+def pixel_groups(i, sel, anchors, cap, rng):
+    """Pixels of time step i (mask sel) grouped by their anchor dates (tuple of [time x pixel] arrays), capped."""
+    idx = np.flatnonzero(sel)
+    keys = np.stack([a[i, idx] for a in anchors], 1)
+    idx, keys = idx[(keys >= 0).all(1)], keys[(keys >= 0).all(1)]
+    if not len(idx):
+        return
+    uk, inv = np.unique(keys, axis=0, return_inverse=True)
+    for g, k in enumerate(uk):
+        m = idx[inv.ravel() == g]
+        yield tuple(int(v) for v in k), (rng.choice(m, cap, replace=False) if len(m) > cap else m)
+
+
 def interp_at(days, y, valid, prev, nxt):
     """Linear interpolation from the previous / next valid value; NaN where either is missing."""
     cols = np.arange(y.shape[1])[None, :]
