@@ -35,3 +35,55 @@ export function fmtUnc(v, u, d) {
   if (v == null || !isFinite(v)) return "no data";
   return `${(+v).toFixed(d)} ± ${(+u).toFixed(d)}`;
 }
+
+// ---- MY FIELDS: picked fields and zone rates, kept in the browser (no accounts) ----
+export const MY_FIELDS_KEY = "cropOutlook.myFields.v1";
+const EMPTY = () => ({ fields: [], rates: {} });
+
+export function loadMyFields(storage) {
+  try {
+    const s = storage && storage.getItem(MY_FIELDS_KEY);
+    if (!s) return EMPTY();
+    const v = JSON.parse(s);
+    if (!v || !Array.isArray(v.fields) || typeof v.rates !== "object" || v.rates === null) return EMPTY();
+    return { fields: v.fields, rates: v.rates };
+  } catch (e) {
+    return EMPTY();
+  }
+}
+
+export function saveMyFields(storage, state) {
+  storage.setItem(MY_FIELDS_KEY, JSON.stringify({ fields: state.fields, rates: state.rates }));
+}
+
+// ---- zones: weighted terciles of a period-mean LAI (one value per pixel; NaN = outside / no data) ----
+function wquantile(sorted, q) {
+  // sorted: [[value, weight], ...]; equals numpy's linear quantile for equal weights
+  const C = []; let c = 0;
+  for (const [, w] of sorted) { c += w; C.push(c); }
+  const den = C[C.length - 1] - sorted[sorted.length - 1][1];
+  const pos = sorted.map(([, w], i) => (C[i] - w) / den);
+  for (let i = 1; i < sorted.length; i++) {
+    if (pos[i] >= q) {
+      const f = (q - pos[i - 1]) / (pos[i] - pos[i - 1] || 1);
+      return sorted[i - 1][0] + f * (sorted[i][0] - sorted[i - 1][0]);
+    }
+  }
+  return sorted[sorted.length - 1][0];
+}
+
+export function zones(values, weights) {
+  const classes = new Int8Array(values.length).fill(-1);
+  const ok = [];
+  values.forEach((v, i) => { if (v != null && isFinite(v)) ok.push([v, weights[i] > 0 ? weights[i] : 0, i]); });
+  const vs = ok.map(o => o[0]);
+  if (ok.length < 9 || Math.max(...vs) - Math.min(...vs) < 1e-9) {
+    ok.forEach(o => { classes[o[2]] = 0; });
+    return { classes, cuts: [NaN, NaN], n: 1 };
+  }
+  const sorted = ok.map(o => [o[0], o[1]]).sort((a, b) => a[0] - b[0]);
+  const cuts = [wquantile(sorted, 1 / 3), wquantile(sorted, 2 / 3)];
+  ok.forEach(([v, , i]) => { classes[i] = v <= cuts[0] ? 0 : v <= cuts[1] ? 1 : 2; });
+  const n = new Set(ok.map(o => classes[o[2]])).size;
+  return { classes, cuts, n };
+}
