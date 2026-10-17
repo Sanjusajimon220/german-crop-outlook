@@ -87,3 +87,18 @@ export function zones(values, weights) {
   const n = new Set(ok.map(o => classes[o[2]])).size;
   return { classes, cuts, n };
 }
+
+// ---- geometry: image placement by three corners (the UTM grid is rotated against the web map north) ----
+// matrix [a, b, c, d, e, f]: x = a*col + c*row + e, y = b*col + d*row + f (SVG matrix order)
+export function affineFromCorners(ul, ur, ll, w, h) {
+  return [(ur[0] - ul[0]) / w, (ur[1] - ul[1]) / w, (ll[0] - ul[0]) / h, (ll[1] - ul[1]) / h, ul[0], ul[1]];
+}
+
+export function applyAffine(m, col, row) {
+  return [m[0] * col + m[2] * row + m[4], m[1] * col + m[3] * row + m[5]];
+}
+
+export function invertAffine(m) {
+  const [a, b, c, d, e, f] = m, det = a * d - b * c;
+  return [d / det, -b / det, -c / det, a / det, (c * f - d * e) / det, (b * e - a * f) / det];
+}
