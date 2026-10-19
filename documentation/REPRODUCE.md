@@ -40,6 +40,27 @@ Test-year scoring (one look each): `score_v10_district.py`, `score_ranges_v10b.p
 ## 5. Platform (`05_platform`)
 `export_platform.py` writes `docs/data/*.json`; `docs/index.html` is the page.
 
-## 6. Field level (`06_field`) - phase 2, in development
+## 6. Field level (`06_field`), NRW
 Field weather / soil, Sentinel-2 + PROSAIL LAI, particle-filter assimilation, YieldSAT tests,
 `phase4_relative_maps.py` (within-field relative yield maps).
+
+### Field v2: weekly 10 m green LAI and NDVI (4 NRW areas x 2021-2025)
+Run from the data folder (`D:ista`) with Python 3.12; long runs detached (no console).
+1. `areas.py` - the four 8 x 8 km areas (pilot, selhausen, north, south) and the seasons (1 Oct - 31 Aug).
+2. `phase10_fields.py` - NRW field register per area-season, each 10 m pixel's area share inside its field.
+3. `phase10_download.py` - Sentinel-2 L2A and Sentinel-1 (both orbits) from the Copernicus Data Space (openEO; ~17 credits
+   per area-season); `phase10_landsat.py` - Landsat 8/9 C2 L2 from Microsoft Planetary Computer (free);
+   `phase10_landsat_net.py` - PROSAIL network for Landsat.
+4. `phase11_retrieval.py <area> <year> ...` (uses `fv2.py`) - green LAI, chlorophyll, NDVI per clear pixel-date.
+5. `phase11_fusion_test.py` - season tests (leave one season out, whole dates hidden); `phase12_area_test.py rows | test |
+   summary` - the deciding area test (new area, new year). Rules and results: `documentation/project_log.md`.
+6. `fv2_produce.py train` - uncertainty table (`uncertainty_V2.json`) and production models (LAI, NDVI; live + re-analysis).
+7. `fv2_weekly.py` - weekly pixel series per area-season (`weekly_pixels_V2.npz`): line for gaps <= 30 days, radar model
+   for longer gaps, each value with its uncertainty and source.
+8. `fv2_platform.py` - platform export to `docs/field/` (fields, weekly series, pixel blocks, map images, Sentinel-2
+   true colour, `index.json`, `districts.json`). `run_platform_data.py` runs steps 6-8; every step resumes after a stop.
+
+### Platform
+`docs/index.html` holds the district and field level (`docs/js/field_view.js`, `my_fields.js`, `isoxml.js`,
+`field_core.js`). `05_platform/build_site.py [src] [site]` copies `docs/` into the site's `crop-outlook/` after a dated
+backup. Tests: `python -m pytest tests/field` and `node --test tests/js`.
