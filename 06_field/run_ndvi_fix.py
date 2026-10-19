@@ -32,9 +32,12 @@ def rm(pattern):
 if __name__ == "__main__":
     shutil.copy(os.path.join(HERE, "fv2.py"), "fv2.py")                     # the run copy used from D:\vista
     areas = [x for a in ("pilot", "selhausen", "north", "south") for y in range(2021, 2026) for x in (a, str(y))]
-    run("retrieval_fix", ["phase11_retrieval.py", *areas])
-    rm(os.path.join(L, "area_rows", "ndvi_*")); rm(os.path.join(L, "area_parts", "ndvi_*"))
-    shutil.move(os.path.join(L, "area_test_summary_log.txt"), os.path.join(L, "area_test_summary_log_contaminated.txt"))
+    if os.path.exists(os.path.join(L, "area_test_summary_log_contaminated.txt")):   # restarted: retrieval already done
+        log("resumed after the retrieval")
+    else:
+        run("retrieval_fix", ["phase11_retrieval.py", *areas])
+        rm(os.path.join(L, "area_rows", "ndvi_*")); rm(os.path.join(L, "area_parts", "ndvi_*"))
+        shutil.move(os.path.join(L, "area_test_summary_log.txt"), os.path.join(L, "area_test_summary_log_contaminated.txt"))
     for s in ("rows", "test", "summary"):
         run(f"area_test_{s}_fix", ["phase12_area_test.py", s])
     shutil.copy(os.path.join(L, "area_test_summary_fix_log.txt"), os.path.join(L, "area_test_summary_log.txt"))
