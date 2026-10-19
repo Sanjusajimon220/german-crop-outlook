@@ -109,7 +109,7 @@ def _rnd(v, d):
 
 def export(area, year):
     out = os.path.join(DOCS, f"{area}_{year}")
-    if os.path.exists(os.path.join(out, "series.json")):
+    if os.path.exists(os.path.join(out, ".complete")):           # written last: a stopped export is redone
         return
     for sub in ("lai", "ndvi", "rgb"):
         os.makedirs(os.path.join(out, sub), exist_ok=True)
@@ -184,6 +184,7 @@ def export(area, year):
     for d in s2d:
         _rgb_jpg(os.path.join(raw_dir(area, year), "s2", f"openEO_{d}Z.tif"), os.path.join(out, "rgb", f"{d}.jpg"))
     json.dump(s2d, open(os.path.join(out, "rgb.json"), "w"))
+    open(os.path.join(out, ".complete"), "w").close()
     print(f"{area} {year}: {F} fields exported", flush=True)
 
 

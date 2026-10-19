@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 import fv2_platform as X
 
@@ -44,3 +45,15 @@ def test_series_matches_pixel_mean():
     inv = np.array([0, 0, 1, 1])
     out = X.field_mean(vals, w, inv, n_fields=2)
     assert np.allclose(out, [[2.0, 5.0]])
+
+
+def test_export_redone_unless_complete(tmp_path, monkeypatch):
+    # a shutdown can leave series.json without the pixel and image files; only the '.complete' marker means done
+    monkeypatch.setattr(X, "DOCS", str(tmp_path))
+    d = tmp_path / "nowhere_2024"
+    d.mkdir()
+    (d / "series.json").write_text("{}")
+    with pytest.raises(FileNotFoundError):
+        X.export("nowhere", 2024)
+    (d / ".complete").write_text("")
+    assert X.export("nowhere", 2024) is None

@@ -41,7 +41,10 @@ if __name__ == "__main__":
     for s in ("rows", "test", "summary"):
         run(f"area_test_{s}_fix", ["phase12_area_test.py", s])
     shutil.copy(os.path.join(L, "area_test_summary_fix_log.txt"), os.path.join(L, "area_test_summary_log.txt"))
-    rm(os.path.join(L, "models", "ndvi_*")); rm(os.path.join(L, "uncertainty_V2.json"))
-    rm(os.path.join(L, "*_20*", "weekly_pixels_V2.npz")); rm("D:/german-crop-outlook-field/docs/field/*")
+    cleaned = os.path.join(L, "ndvi_fix_cleaned.txt")             # old NDVI outputs removed once; a restart keeps new work
+    if not os.path.exists(cleaned):
+        rm(os.path.join(L, "models", "ndvi_*")); rm(os.path.join(L, "uncertainty_V2.json"))
+        rm(os.path.join(L, "*_20*", "weekly_pixels_V2.npz")); rm("D:/german-crop-outlook-field/docs/field/*")
+        open(cleaned, "w").close()
     run("platform_data_fix", [os.path.join(HERE, "run_platform_data.py")])
     log("NDVI FIX DONE")
