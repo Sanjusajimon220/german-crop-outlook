@@ -6,7 +6,8 @@ import shutil
 import subprocess
 import time
 
-PY = r"C:\Users\Asus\AppData\Local\Programs\Python\Python312\python.exe"
+PY = r"C:\Users\Asus\AppData\Local\Programs\Python\Python312\pythonw.exe"   # no console: no Ctrl+C on power / app events
+NO_CONSOLE = 0x08000000 | 0x00000200                                          # CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP
 HERE = os.path.dirname(os.path.abspath(__file__))
 L = os.path.join("data", "processed", "field_v2")
 
@@ -18,7 +19,8 @@ def log(m):
 
 def run(name, args):
     with open(os.path.join(L, f"{name}_log.txt"), "a") as out:
-        r = subprocess.run([PY, "-W", "ignore", *args], stdout=out, stderr=subprocess.STDOUT)
+        r = subprocess.run([PY, "-W", "ignore", *args], stdout=out, stderr=subprocess.STDOUT,
+                           stdin=subprocess.DEVNULL, creationflags=NO_CONSOLE)
     log(f"{name} exit {r.returncode}")
     if r.returncode:
         raise SystemExit(r.returncode)

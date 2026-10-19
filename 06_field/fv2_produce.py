@@ -67,12 +67,17 @@ def train_production(target):
             del S
     models = []
     for name, parts in (("live", L), ("re", R)):
+        path = os.path.join(OUT, "models", f"{target}_{name}_V2.joblib")
+        if os.path.exists(path):                               # saved before a stop: not refitted
+            models.append(joblib.load(path))
+            continue
         X = pd.concat([p[0] for p in parts], ignore_index=True)
         y = np.concatenate([p[1] for p in parts])
         F.CAP = len(X)                                         # all rows (<= 250,000 per area-season already)
         m = F.fit(X, y, rng, "V2")
         os.makedirs(os.path.join(OUT, "models"), exist_ok=True)
-        joblib.dump(m, os.path.join(OUT, "models", f"{target}_{name}_V2.joblib"))
+        joblib.dump(m, path + ".part")
+        os.replace(path + ".part", path)                       # a stop mid-write leaves no half model
         models.append(m)
     return tuple(models)
 
