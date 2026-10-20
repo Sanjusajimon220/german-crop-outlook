@@ -73,3 +73,9 @@ def test_manifest_and_icons_for_the_installable_app():
     for i in m["icons"]:
         assert (docs / i["src"]).exists(), i["src"]
     assert (docs / "sw.js").exists()
+
+
+def test_manifest_served_as_manifest_json(tmp_path):
+    src, site = _src(tmp_path), tmp_path / "site"
+    B.build_site(str(src), str(site), backup_root=str(tmp_path / "bk"))
+    assert "application/manifest+json" in (site / "_headers").read_text()

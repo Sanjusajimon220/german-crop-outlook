@@ -211,6 +211,10 @@ section[hidden],.ctl[hidden]{display:none}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
+// installable app: catch the browser's install offer as early as possible (it can fire before the app has loaded)
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); window.__installEv = e; window.dispatchEvent(new Event("installable")); });
+</script>
+<script>
 const S = { crop: "winter_wheat", year: "2022", lead: 3, layer: "median", sel: "DE", data: {} };
 const LEADS = ["12", "8", "6", "4", "2", "0"];
 let META, GEO, ACC, NDVI;
@@ -408,11 +412,11 @@ document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
   } catch (e) { console.warn("field level not available:", e); }
   // installable app: offline support (service worker), install button, offline note
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("./sw.js").catch(() => {});
-  let installEv = null;
   const ib = document.getElementById("install-app");
-  window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEv = e; ib.hidden = false; });
-  ib.onclick = async () => { if (!installEv) return; installEv.prompt(); await installEv.userChoice; installEv = null; ib.hidden = true; };
-  window.addEventListener("appinstalled", () => { ib.hidden = true; });
+  const showInstall = () => { ib.hidden = !window.__installEv; };
+  window.addEventListener("installable", showInstall); showInstall();
+  ib.onclick = async () => { const ev = window.__installEv; if (!ev) return; ev.prompt(); await ev.userChoice; window.__installEv = null; showInstall(); };
+  window.addEventListener("appinstalled", () => { window.__installEv = null; showInstall(); });
   const net = () => { document.getElementById("offline-note").hidden = navigator.onLine; };
   window.addEventListener("online", net); window.addEventListener("offline", net); net();
 })().catch(err => { document.getElementById("panel").textContent = "Could not load the data: " + err.message; });

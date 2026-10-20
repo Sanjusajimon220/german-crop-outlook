@@ -12,6 +12,7 @@ import time
 HEADERS = {   # path -> rule; field files carry ?v=<data version>, sw.js is always re-checked (installable app updates)
     "/crop-outlook/field/*": "\n/crop-outlook/field/*\n  Cache-Control: public, max-age=604800\n",
     "/crop-outlook/sw.js": "\n/crop-outlook/sw.js\n  Cache-Control: no-cache\n",
+    "/crop-outlook/manifest.webmanifest": "\n/crop-outlook/manifest.webmanifest\n  Content-Type: application/manifest+json\n",
 }
 
 
