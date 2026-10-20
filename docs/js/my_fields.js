@@ -23,8 +23,14 @@ function safeStorage() { try { return window.localStorage; } catch (e) { return 
 function persist() { try { saveMyFields(window.localStorage, ST); } catch (e) { /* storage blocked: keep in memory */ } }
 const key = f => `${f.area}_${f.year}_${f.id}`;
 
+function keepOffline(f) {
+  const k = `${f.area}_${f.year}`, files = ["fields.geojson", "series.json", "rgb.json", "px.json", "px.bin"].map(n => new URL(url(`${k}/${n}`), location.href).href);
+  navigator.serviceWorker?.controller?.postMessage({ type: "keep", urls: files });
+}
+
 export function add(f) {
   if (!ST.fields.some(x => key(x) === key(f))) ST.fields.push(f);
+  keepOffline(f);
   persist(); render();
   const b = document.getElementById("fv-add");
   if (b) { b.textContent = "Added to my fields ✓"; b.disabled = true; }

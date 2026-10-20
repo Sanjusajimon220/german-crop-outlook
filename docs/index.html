@@ -1,5 +1,12 @@
 <meta charset="utf-8">
 <title>German Crop Outlook</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0a0e1a">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Crop Outlook">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
@@ -68,6 +75,9 @@ th{font:600 11px var(--f-body);letter-spacing:.06em;text-transform:uppercase;col
 .prose{max-width:72ch}
 .prose p,.prose li{line-height:1.6}
 section[hidden],.ctl[hidden]{display:none}
+.install{margin-left:8px;border:1px solid var(--accent);color:var(--accent);background:none;border-radius:6px;padding:5px 12px;font:600 13px var(--f-body);cursor:pointer}
+.install[hidden],.offline[hidden]{display:none}
+.offline{margin:8px 0 0;padding:6px 10px;border-radius:6px;background:var(--accent-soft);color:var(--ink);font-size:13px}
 #map path.f,#map path.area{vector-effect:non-scaling-stroke}
 .crop{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:999px;background:color-mix(in srgb,var(--c) 18%,transparent);color:var(--ink);font-size:.85em;font-weight:500;white-space:nowrap;vertical-align:middle}.crop i{width:9px;height:9px;border-radius:50%;background:var(--c)}
 .mf-layout{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(360px,1fr);gap:16px;padding-block:14px;align-items:start}
@@ -118,7 +128,9 @@ section[hidden],.ctl[hidden]{display:none}
     <button role="tab" id="tab-my" aria-selected="false" data-page="myfields">My fields</button>
     <button role="tab" id="tab-acc" aria-selected="false" data-page="accuracy">Accuracy</button>
     <button role="tab" id="tab-method" aria-selected="false" data-page="method">Method</button>
+    <button id="install-app" class="install" hidden title="Install Crop Outlook as an app on this device">Install app</button>
   </nav>
+  <div id="offline-note" class="offline" hidden>Offline: showing the data stored on this device (district maps, fields you have viewed or saved).</div>
 </header>
 
 <section id="page-explore">
@@ -394,5 +406,14 @@ document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
     await import("./js/my_fields.js");
     drawPanel();
   } catch (e) { console.warn("field level not available:", e); }
+  // installable app: offline support (service worker), install button, offline note
+  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("./sw.js").catch(() => {});
+  let installEv = null;
+  const ib = document.getElementById("install-app");
+  window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEv = e; ib.hidden = false; });
+  ib.onclick = async () => { if (!installEv) return; installEv.prompt(); await installEv.userChoice; installEv = null; ib.hidden = true; };
+  window.addEventListener("appinstalled", () => { ib.hidden = true; });
+  const net = () => { document.getElementById("offline-note").hidden = navigator.onLine; };
+  window.addEventListener("online", net); window.addEventListener("offline", net); net();
 })().catch(err => { document.getElementById("panel").textContent = "Could not load the data: " + err.message; });
 </script>

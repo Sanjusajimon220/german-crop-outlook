@@ -53,3 +53,23 @@ def test_build_site_refuses_incomplete_source_and_keeps_the_live_folder(tmp_path
     with pytest.raises(FileNotFoundError):
         B.build_site(str(src), str(site), backup_root=str(tmp_path / "bk"))
     assert (site / "crop-outlook" / "live.html").read_text() == "live"
+
+
+def test_service_worker_is_never_cached(tmp_path):
+    # the installable app (PWA): sw.js must always be re-checked so updates reach installed apps
+    src, site = _src(tmp_path), tmp_path / "site"
+    B.build_site(str(src), str(site), backup_root=str(tmp_path / "bk"))
+    h = (site / "_headers").read_text()
+    assert "/crop-outlook/sw.js" in h and "no-cache" in h
+
+
+def test_manifest_and_icons_for_the_installable_app():
+    import json
+    docs = Path(__file__).resolve().parents[2] / "docs"
+    m = json.load(open(docs / "manifest.webmanifest", encoding="utf-8"))
+    assert m["display"] == "standalone" and m["start_url"] and m["name"]
+    sizes = {i["sizes"] for i in m["icons"]}
+    assert {"192x192", "512x512"} <= sizes
+    for i in m["icons"]:
+        assert (docs / i["src"]).exists(), i["src"]
+    assert (docs / "sw.js").exists()

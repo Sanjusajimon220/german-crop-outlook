@@ -1,0 +1,15 @@
+{
+  "name": "German Crop Outlook",
+  "short_name": "Crop Outlook",
+  "description": "District yield forecasts for Germany and weekly 10 m green LAI / NDVI for NRW fields.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0a0e1a",
+  "theme_color": "#0a0e1a",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

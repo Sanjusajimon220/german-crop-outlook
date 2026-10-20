@@ -9,10 +9,10 @@ import shutil
 import sys
 import time
 
-HEADERS = """
-/crop-outlook/field/*
-  Cache-Control: public, max-age=604800
-"""
+HEADERS = {   # path -> rule; field files carry ?v=<data version>, sw.js is always re-checked (installable app updates)
+    "/crop-outlook/field/*": "\n/crop-outlook/field/*\n  Cache-Control: public, max-age=604800\n",
+    "/crop-outlook/sw.js": "\n/crop-outlook/sw.js\n  Cache-Control: no-cache\n",
+}
 
 
 def build_site(src="D:/german-crop-outlook-field/docs", site="D:/groundtruth-earth-site", backup_root="D:/groundtruth-earth-site-backup"):
@@ -28,9 +28,10 @@ def build_site(src="D:/german-crop-outlook-field/docs", site="D:/groundtruth-ear
     shutil.copytree(src, dest, ignore=shutil.ignore_patterns("package.json", "*.part", "*.part.npz"))
     hp = os.path.join(site, "_headers")
     old = open(hp, encoding="utf-8").read() if os.path.exists(hp) else ""
-    if "/crop-outlook/field/*" not in old:
+    missing = [rule for path, rule in HEADERS.items() if path not in old]
+    if missing:
         with open(hp, "a", encoding="utf-8") as f:
-            f.write(HEADERS)
+            f.write("".join(missing))
     n, size = 0, 0
     for root, _, files in os.walk(dest):
         for f in files:
