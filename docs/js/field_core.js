@@ -16,6 +16,11 @@ export function sourceLabel(src) {
   return SOURCES[src] ?? "no data";
 }
 
+// the field view closes only when the USER zooms out past half the entry zoom (programmatic zoom-in passes low k too)
+export function leavesField({ active, k, user, enterK }) {
+  return active && user && k < enterK / 2;
+}
+
 // a difference smaller than the uncertainty is "within noise"
 export function withinNoise(diff, unc) {
   return Math.abs(diff) < unc;
@@ -29,6 +34,21 @@ export function nearestRgbDate(dates, week) {
     if (g < bd) { bd = g; best = d; }
   }
   return bd <= 10 ? best : null;
+}
+
+// image for the field panel: nearest week this FIELD was measured clear (src 1), then the image within 3 days of it
+export function clearRgbDate(weeks, src, dates, w) {
+  const order = weeks.map((_, k) => k).sort((a, b) => Math.abs(a - w) - Math.abs(b - w) || a - b);
+  for (const k of order) {
+    if (src[k] !== 1) continue;
+    let best = null, bd = Infinity;
+    for (const d of dates) {
+      const g = Math.abs(t(d) - t(weeks[k])) / DAY;
+      if (g < bd) { bd = g; best = d; }
+    }
+    if (bd <= 3) return best;
+  }
+  return null;
 }
 
 export function fmtUnc(v, u, d) {

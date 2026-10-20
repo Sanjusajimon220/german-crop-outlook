@@ -1,6 +1,6 @@
 // Field level in the EXPLORER: zoom from districts to the NRW study areas, fields and 10 m pixels.
 // Uses the globals of the district app (S, META, GEO, d3, css, fmt, rowFor, cropData, drawMap, drawPanel, doyDate, LEADS).
-import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc, affineFromCorners } from "./field_core.js";
+import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, clearRgbDate, fmtUnc, affineFromCorners, leavesField } from "./field_core.js";
 
 const BASE = "field/";
 const ENTER_K = 40;                                   // zoom factor at which an area switches to fields
@@ -39,7 +39,7 @@ export async function initField() {
   const svg = d3.select("#map");
   const zoom = d3.zoom().scaleExtent([1, 600]).on("zoom", e => {
     d3.select("#mapg").attr("transform", e.transform);
-    if (FV.active && e.transform.k < ENTER_K / 2) leaveField();
+    if (leavesField({ active: FV.active, k: e.transform.k, user: !!e.sourceEvent, enterK: ENTER_K })) leaveField();
   });
   svg.call(zoom).on("dblclick.zoom", null);
   FV.zoom = zoom;
@@ -65,6 +65,7 @@ export function drawAreas() {
 
 export async function enterField(area) {
   FV.area = area; FV.year = seasonFor(area); FV.active = true;
+  d3.select("#mapg").classed("fieldmode", true);              // districts in neutral grey: no forecast colour behind field gaps
   const d = await loadSeason(area, FV.year);
   FV.geo = d.geo; FV.series = d.series; FV.rgb = d.rgb;
   FV.week = defaultWeek(FV.series.weeks);
@@ -85,6 +86,7 @@ export async function enterField(area) {
 export function leaveField() {
   if (!FV.active) return;
   FV.active = false; FV.sel = null;
+  d3.select("#mapg").classed("fieldmode", false);
   d3.select("#fieldg").remove();
   document.getElementById("fieldlayer-ctl").hidden = true;
   const inp = document.getElementById("lead");
@@ -167,16 +169,16 @@ async function districtContext(f) {
 }
 
 function rgbCanvas(s) {
-  const wk = FV.series.weeks[FV.week], d = nearestRgbDate(FV.rgb, wk);
-  if (!d) return `<p class="note">No clear Sentinel-2 image within 10 days of this week.</p>`;
+  const d = clearRgbDate(FV.series.weeks, s.src, FV.rgb, FV.week);
+  if (!d) return `<p class="note">No clear Sentinel-2 image of this field in this season.</p>`;
   return `<canvas id="fv-rgb" width="320" height="240" style="width:100%;max-width:320px;border-radius:6px"></canvas>
-    <p class="note">Sentinel-2 true colour, ${d}</p>`;
+    <p class="note">Sentinel-2 true colour, ${d} (nearest date this field was clear)</p>`;
 }
 
 function paintRgb(s) {
   const c = document.getElementById("fv-rgb");
   if (!c) return;
-  const d = nearestRgbDate(FV.rgb, FV.series.weeks[FV.week]), [r0, r1, c0, c1] = s.bb, pad = 6;
+  const d = clearRgbDate(FV.series.weeks, s.src, FV.rgb, FV.week), [r0, r1, c0, c1] = s.bb, pad = 6;
   const img = new Image();
   img.onload = () => {
     const sx = Math.max(0, c0 - pad), sy = Math.max(0, r0 - pad), sw = Math.min(800, c1 + pad) - sx, sh = Math.min(800, r1 + pad) - sy;

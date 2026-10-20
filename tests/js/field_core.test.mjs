@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc } from "../../docs/js/field_core.js";
+import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc , leavesField, clearRgbDate } from "../../docs/js/field_core.js";
 
 const weeks = ["2024-05-20", "2024-05-27", "2024-06-03"];
 
@@ -37,4 +37,20 @@ test("fmtUnc formats value and uncertainty", () => {
   assert.equal(fmtUnc(3.04, 0.41, 1), "3.0 ± 0.4");
   assert.equal(fmtUnc(0.761, 0.02, 2), "0.76 ± 0.02");
   assert.equal(fmtUnc(null, 0.4, 1), "no data");
+});
+
+test("only a user zoom-out leaves the field view, not the zoom-in animation", () => {
+  assert.equal(leavesField({ active: true, k: 3, user: false, enterK: 40 }), false);   // animation from k = 1 towards the area
+  assert.equal(leavesField({ active: true, k: 3, user: true, enterK: 40 }), true);     // the user zoomed out
+  assert.equal(leavesField({ active: true, k: 30, user: true, enterK: 40 }), false);   // still close enough
+  assert.equal(leavesField({ active: false, k: 3, user: true, enterK: 40 }), false);   // not in the field view
+});
+
+test("Sentinel-2 image comes from the nearest week the field was measured clear", () => {
+  const weeks = ["2022-06-13", "2022-06-20", "2022-06-27", "2022-07-04", "2022-07-11"];
+  const src = [1, 2, 3, 3, 1];                        // measured, line, radar, radar, measured
+  const rgb = ["2022-06-14", "2022-07-03", "2022-07-12"];
+  assert.equal(clearRgbDate(weeks, src, rgb, 3), "2022-07-12");   // 4 Jul itself was cloudy for this field
+  assert.equal(clearRgbDate(weeks, src, rgb, 1), "2022-06-14");   // ties go to the earlier week
+  assert.equal(clearRgbDate(weeks, [2, 2, 3, 3, 2], rgb, 3), null); // never measured clear: no image
 });

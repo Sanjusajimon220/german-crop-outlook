@@ -1,5 +1,5 @@
 // MY FIELDS: fields picked on the map (kept in this browser, no accounts), list + map, zones, rates, exports.
-import { loadMyFields, saveMyFields, zones, fmtUnc, sourceLabel, withinNoise, nearestRgbDate,
+import { loadMyFields, saveMyFields, zones, fmtUnc, sourceLabel, withinNoise, nearestRgbDate, clearRgbDate,
          affineFromCorners, invertAffine, applyAffine } from "./field_core.js";
 import { buildTaskData } from "./isoxml.js";
 import { FV, loadSeason, attribution } from "./field_view.js";
@@ -151,7 +151,8 @@ function paint() {
   const { z } = currentZones();
   drawPixels(document.getElementById("mf-zones"), pb, i => (z.classes[i] < 0 ? null : ZCOL[z.n === 1 ? 1 : z.classes[i]]));
   document.getElementById("mf-z-cap").textContent = z.n === 1 ? "One zone (field too small or too uniform)" : `${z.n} zones`;
-  const d = nearestRgbDate(CUR.rgb, CUR.weeks[w]) || CUR.rgb[Math.floor(CUR.rgb.length / 2)];
+  const d = clearRgbDate(CUR.weeks, CUR.s.src, CUR.rgb, w);
+  if (!d) { document.getElementById("mf-rgb-cap").textContent = "No clear Sentinel-2 image of this field"; return; }
   const img = new Image(), c = document.getElementById("mf-rgb"), { r, c: cc } = pb.e;
   img.onload = () => {
     const r0 = Math.min(...r), c0 = Math.min(...cc), h = Math.max(...r) - r0 + 1, ww = Math.max(...cc) - c0 + 1;
