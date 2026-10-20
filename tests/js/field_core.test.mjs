@@ -184,3 +184,13 @@ test("animation frames: the first week of every month", () => {
   const weeks = ["2024-09-30", "2024-10-07", "2024-10-28", "2024-11-04", "2024-11-25", "2024-12-02"];
   assert.deepEqual(monthlyFrames(weeks), [0, 1, 3, 5]);     // Sep, Oct, Nov, Dec
 });
+
+test("median curves per crop also for NDVI", () => {
+  const props = [1, 2, 3].map(id => ({ id, group: "wheat", crop: "Winterweichweizen" }));
+  const fields = { 1: { lai: [1], ndvi: [0.5] }, 2: { lai: [2], ndvi: [0.7] }, 3: { lai: [3], ndvi: [0.6] } };
+  assert.deepEqual(cropMedians(props, fields, 3, "ndvi")["Winter wheat"], [0.6]);
+});
+
+test("field margin strips get an English name", () => {
+  assert.equal(cropStyle("other", "Randstreifen (Acker/DK)").label, "Field margin strip");
+});

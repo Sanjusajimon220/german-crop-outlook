@@ -131,7 +131,7 @@ const SPECIAL = [[/^Gartenk(ü|u)rbis/i, "Pumpkin"], [/^M(ö|o)hre/i, "Carrot"],
   [/^Spargel/i, "Asparagus"], [/^Winterhafer/i, "Winter oats"], [/^Sommerhafer/i, "Spring oats"], [/^Winterroggen/i, "Winter rye"],
   [/^Sommerroggen/i, "Spring rye"], [/^Wintertriticale/i, "Winter triticale"], [/^Sommertriticale/i, "Spring triticale"],
   [/^Gurke/i, "Cucumber"], [/^Zichorie/i, "Chicory"], [/^Ackerbohne/i, "Field bean"], [/^Gem(ü|u)seerbse/i, "Vegetable pea"],
-  [/^Luzerne/i, "Lucerne"], [/^Kleegras/i, "Clover-grass"], [/^Baumschule/i, "Tree nursery"], [/^Chinaschilf|Miscanthus/i, "Miscanthus"]];
+  [/^Luzerne/i, "Lucerne"], [/^Kleegras/i, "Clover-grass"], [/^Baumschule/i, "Tree nursery"], [/^Chinaschilf|Miscanthus/i, "Miscanthus"], [/^Randstreifen/i, "Field margin strip"]];
 
 export function cropStyle(group, crop) {
   const sp = SPECIAL.find(([re]) => re.test(String(crop || "")));
@@ -157,11 +157,11 @@ export function cropSummary(props) {
 }
 
 // weekly median green LAI per crop label (crops with fewer than minN fields left out) for the area chart
-export function cropMedians(props, fields, minN = 10) {
+export function cropMedians(props, fields, minN = 10, key = "lai") {
   const out = {};
   for (const e of cropSummary(props)) {
     if (e.n < minN) continue;
-    const series = e.ids.map(id => fields[id]?.lai).filter(Boolean);
+    const series = e.ids.map(id => fields[id]?.[key]).filter(Boolean);
     if (series.length < minN) continue;
     out[e.label] = series[0].map((_, w) => {
       const v = series.map(s => s[w]).filter(x => x != null).sort((a, b) => a - b);

@@ -15,7 +15,7 @@ export const EXAMPLES = [{ area: "pilot", year: 2025, id: 8702226 }, { area: "se
 let ST = loadMyFields(safeStorage(), EXAMPLES);
 let CUR = null;
 const AREA_NAMES = { pilot: "Pilot · Düren", selhausen: "Selhausen", north: "North", south: "South" };
-const AV = { area: "pilot", year: 2025, crop: null, geo: null, series: null, view: "crops", frame: 0, step: "month", timer: null };   // the study area shown
+const AV = { area: "pilot", year: 2025, crop: null, geo: null, series: null, view: "crops", frame: 0, step: "month", timer: null, metric: "lai", sel: new Set() };   // the study area shown
 const NOVAL = "#3a4157";                     // field pixel without a value yet (before its first clear image)
 const PXIDX = {};
 
@@ -349,10 +349,15 @@ export async function renderAreas() {
           </button>`).join("")}
       </aside>
     </div>
-    <h3>Median green LAI per crop</h3><div id="mf-areachart"></div>`;
+    <div class="mf-head" style="margin-top:16px"><h3 style="margin:0">Median per crop through the season</h3>
+      <span class="seg">${[["lai", "Green LAI"], ["ndvi", "NDVI"]].map(([k, t]) => `<button data-metric="${k}" class="${k === AV.metric ? "on" : ""}">${t}</button>`).join("")}</span></div>
+    <div class="crops" id="mf-chartcrops" style="margin:8px 0"></div><div id="mf-areachart"></div>`;
   box.querySelectorAll("button[data-area]").forEach(b => b.onclick = () => { stopAnim(); AV.area = b.dataset.area; AV.crop = null; renderAreas(); });
   box.querySelectorAll("button[data-view]").forEach(b => b.onclick = () => { stopAnim(); AV.view = b.dataset.view; AV.frame = null; renderAreas(); });
   document.getElementById("mf-year").onchange = e => { stopAnim(); AV.year = +e.target.value; renderAreas(); };
+  box.querySelectorAll("button[data-metric]").forEach(b => b.onclick = () => {
+    AV.metric = b.dataset.metric; box.querySelectorAll("button[data-metric]").forEach(x => x.classList.toggle("on", x === b)); drawAreaChart(props, all);
+  });
   box.querySelectorAll("button[data-crop]").forEach(b => b.onclick = () => { AV.crop = b.dataset.crop === "All crops" ? null : b.dataset.crop; renderAreas(); });
   drawAreaMap(all);
   drawAreaChart(props, all);
@@ -376,6 +381,21 @@ function frameImage(path) {
   return FRAMES[path];
 }
 
+// pixel mask (800 x 800) of the fields of the crop chosen in the crop list; null = all crops
+const MASKS = {};
+async function cropMask() {
+  if (!AV.crop) return null;
+  const k = `${AV.area}_${AV.year}`, mk = `${k}|${AV.crop}`;
+  if (!MASKS[mk]) {
+    if (!PXIDX[k]) PXIDX[k] = await fetch(url(`${k}/px.json`)).then(r => r.json());
+    const lab = Object.fromEntries(AV.geo.features.map(f => [String(f.properties.id), cropStyle(f.properties.group, f.properties.crop).label]));
+    const m = new Uint8Array(800 * 800);
+    for (const [id, e] of Object.entries(PXIDX[k].fields)) if (chipMatch(lab[id])) e.r.forEach((r, i) => { m[r * 800 + e.c[i]] = 1; });
+    MASKS[mk] = m;
+  }
+  return MASKS[mk];
+}
+
 async function drawFrame() {
   const fr = animFrames(), k = Math.min(AV.frame ?? 0, fr.length - 1), w = fr[k], wk = AV.series.weeks[w];
   document.getElementById("mf-frame").value = k;
@@ -386,7 +406,18 @@ async function drawFrame() {
   if (!c) return;
   const ctx = c.getContext("2d");
   ctx.fillStyle = getComputedStyle(document.body).getPropertyValue("--bg") || "#0a0e1a"; ctx.fillRect(0, 0, c.width, c.height);
-  if (im) { ctx.imageSmoothingEnabled = false; ctx.drawImage(im, 0, 0, c.width, c.height); }
+  if (im) {
+    const mask = await cropMask();
+    if (mask) {                                                       // only the chosen crop's pixels, the rest stays dark
+      const off = document.createElement("canvas"); off.width = 800; off.height = 800;
+      const o = off.getContext("2d"); o.drawImage(im, 0, 0, 800, 800);
+      const px = o.getImageData(0, 0, 800, 800);
+      for (let i = 0; i < mask.length; i++) if (!mask[i]) px.data[4 * i + 3] = 0;
+      o.putImageData(px, 0, 0);
+      ctx.imageSmoothingEnabled = false; ctx.drawImage(off, 0, 0, c.width, c.height);
+    } else { ctx.imageSmoothingEnabled = false; ctx.drawImage(im, 0, 0, c.width, c.height); }
+  }
+  if (AV.geo) drawAreaChart(AV.geo.features.map(f => f.properties).filter(p => AV.series.fields[p.id]), cropSummary(AV.geo.features.map(f => f.properties)));
   fr.slice(k + 1, k + 3).forEach(i => frameImage(`${AV.area}_${AV.year}/${AV.view}/${AV.series.weeks[i]}.png`));   // preload the next frames
 }
 
@@ -396,7 +427,7 @@ function initAnim() {
   sl.max = fr.length - 1;
   const L = legendSpec(AV.view), stops = d3.range(0, 1.01, 0.1).map(t => d3.interpolateYlGn(0.05 + 0.95 * t));
   document.getElementById("mf-anim-legend").innerHTML = `<span>${L.min}</span><span class="bar" style="background:linear-gradient(90deg,${stops.join(",")})"></span><span>${L.max} ${L.unit}</span>`
-    + `<span class="note">dark: not a field or no value yet · weekly re-analysis, ${AV.year} season</span>`;
+    + `<span class="note">${AV.crop ? `only ${AV.crop} fields (choose "All crops" in the list for all) · ` : ""}dark: not a field or no value yet · weekly re-analysis, ${AV.year} season</span>`;
   sl.oninput = e => { stopAnim(); AV.frame = +e.target.value; drawFrame(); };
   document.getElementById("mf-step").onchange = e => {
     const cur = animFrames()[AV.frame]; stopAnim(); AV.step = e.target.value;
@@ -440,21 +471,44 @@ function drawAreaMap(crops) {
 }
 
 function drawAreaChart(props, crops) {
-  const med = cropMedians(props, AV.series.fields, 10), weeks = AV.series.weeks, n = weeks.length;
-  const W = 520, H = 190, L = 30, R = 8, T = 8, B = 22, x = i => L + (i * (W - L - R)) / (n - 1), y = v => H - B - (Math.min(6, v) / 6) * (H - B - T);
+  const med = cropMedians(props, AV.series.fields, 10, AV.metric), weeks = AV.series.weeks, n = weeks.length, names = Object.keys(med);
   const col = Object.fromEntries(crops.map(c => [c.label, c.colour]));
-  const lines = Object.entries(med).map(([k, v]) => {
-    const on = chipMatch(k);
+  AV.sel = new Set([...AV.sel].filter(k => names.includes(k)));                         // keep only crops of this area/season
+  const shown = k => (AV.sel.size ? AV.sel.has(k) : chipMatch(k));
+  // crop selection: "All crops" or any number of single crops
+  const cc = document.getElementById("mf-chartcrops");
+  cc.innerHTML = [`<button class="crop chip ${AV.sel.size ? "" : "on"}" data-cc="" style="--c:#8b96b4"><i></i>All crops</button>`]
+    .concat(names.map(k => `<button class="crop chip ${AV.sel.has(k) ? "on" : ""}" data-cc="${k}" style="--c:${col[k]}"><i></i>${k}</button>`)).join("");
+  cc.querySelectorAll("button[data-cc]").forEach(b => b.onclick = () => {
+    const k = b.dataset.cc;
+    if (!k) AV.sel.clear(); else if (AV.sel.has(k)) AV.sel.delete(k); else AV.sel.add(k);
+    drawAreaChart(props, crops);
+  });
+  const max = AV.metric === "ndvi" ? 1 : 6, W = 520, H = 210, L = 34, R = 8, T = 8, B = 22;
+  const x = i => L + (i * (W - L - R)) / (n - 1), y = v => H - B - (Math.max(0, Math.min(max, v)) / max) * (H - B - T);
+  const ids = Object.fromEntries(crops.map(c => [c.label, c.ids]));
+  const fieldLines = AV.sel.size ? [...AV.sel].map(k => (ids[k] || []).map(id => {
+    const v = AV.series.fields[id]?.[AV.metric]; if (!v) return "";
     let d = "", pen = false;
     v.forEach((val, i) => { if (val == null) { pen = false; return; } d += `${pen ? "L" : "M"}${x(i).toFixed(1)},${y(val).toFixed(1)}`; pen = true; });
-    return `<path d="${d}" fill="none" stroke="${col[k]}" stroke-width="${on ? 2.2 : 1}" stroke-opacity="${on ? 1 : 0.25}"><title>${k}</title></path>`;
+    return d ? `<path d="${d}" fill="none" stroke="${col[k]}" stroke-width=".6" stroke-opacity=".13"/>` : "";
+  }).join("")).join("") : "";
+  const lines = names.filter(shown).map(k => {
+    let d = "", pen = false;
+    med[k].forEach((val, i) => { if (val == null) { pen = false; return; } d += `${pen ? "L" : "M"}${x(i).toFixed(1)},${y(val).toFixed(1)}`; pen = true; });
+    const last = med[k].map((v, i) => [v, i]).filter(([v]) => v != null).pop();
+    return (AV.sel.size ? `<path d="${d}" fill="none" stroke="#0a0e1a" stroke-width="5" stroke-opacity=".8"/>` : "")
+      + `<path d="${d}" fill="none" stroke="${col[k]}" stroke-width="${AV.sel.size ? 2.8 : 2.2}"><title>${k}</title></path>`
+      + (AV.sel.size && last ? `<text x="${Math.min(W - R - 2, x(last[1]) + 3)}" y="${y(last[0]) - 3}" text-anchor="end" fill="${col[k]}">${k}</text>` : "");
   }).join("");
   const months = weeks.map((w, i) => [w, i]).filter(([w]) => +w.slice(8, 10) <= 7 && ["11", "01", "03", "05", "07"].includes(w.slice(5, 7)))
     .map(([w, i]) => `<text x="${x(i)}" y="${H - 5}" text-anchor="middle">${["", "Jan", "", "Mar", "", "May", "", "Jul", "", "", "", "Nov"][+w.slice(5, 7)]}</text>`).join("");
-  const ticks = [0, 2, 4, 6].map(t => `<line x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}" stroke="#8b96b4" stroke-opacity=".2"/><text x="${L - 4}" y="${y(t) + 4}" text-anchor="end">${t}</text>`).join("");
-  document.getElementById("mf-areachart").innerHTML = Object.keys(med).length
-    ? `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Median green LAI per crop through the season">${ticks}${months}${lines}</svg>
-       <p class="note">Median of all fields of each crop with at least 10 fields; values are weekly green LAI (m²/m²).</p>`
+  const ticks = (AV.metric === "ndvi" ? [0, 0.5, 1] : [0, 2, 4, 6]).map(t => `<line x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}" stroke="#8b96b4" stroke-opacity=".2"/><text x="${L - 4}" y="${y(t) + 4}" text-anchor="end">${t}</text>`).join("");
+  const fw = AV.view !== "crops" && AV.series ? animFrames()[AV.frame ?? 0] : null;
+  const now = fw != null ? `<line x1="${x(fw)}" x2="${x(fw)}" y1="${T}" y2="${H - B}" stroke="#8b96b4" stroke-dasharray="3 3"/>` : "";
+  document.getElementById("mf-areachart").innerHTML = names.length
+    ? `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Median ${AV.metric === "ndvi" ? "NDVI" : "green LAI"} per crop through the season">${ticks}${months}${now}${fieldLines}${lines}</svg>
+       <p class="note">${AV.sel.size ? "Thin lines: every single field of the selected crops; bold line: their median (the middle value of all fields each week). " : "Select crops to see every single field behind the median. "}Median of all fields of each crop with at least 10 fields · ${AV.metric === "ndvi" ? "NDVI" : "green LAI (m²/m²)"} · weekly, full season ${AV.year - 1}/${String(AV.year).slice(2)}${fw != null ? " · dashed: date shown on the map" : ""}</p>`
     : `<p class="note">No crop has at least 10 fields with values in this season.</p>`;
 }
 
