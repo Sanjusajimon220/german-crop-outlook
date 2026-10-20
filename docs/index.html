@@ -70,6 +70,33 @@ th{font:600 11px var(--f-body);letter-spacing:.06em;text-transform:uppercase;col
 section[hidden],.ctl[hidden]{display:none}
 #map path.f,#map path.area{vector-effect:non-scaling-stroke}
 .crop{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:999px;background:color-mix(in srgb,var(--c) 18%,transparent);color:var(--ink);font-size:.85em;font-weight:500;white-space:nowrap;vertical-align:middle}.crop i{width:9px;height:9px;border-radius:50%;background:var(--c)}
+.mf-layout{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(360px,1fr);gap:16px;padding-block:14px;align-items:start}
+@media (max-width:1050px){.mf-layout{grid-template-columns:minmax(0,1fr)}}
+.mf-side{display:grid;gap:16px}
+.mf-h{margin:0;font:600 19px var(--f-display)}
+.mf-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.mf-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:14px 0}
+@media (max-width:640px){.mf-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.stat{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg)}
+.stat .k,.legendlist .k{font:600 11px var(--f-body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.stat .v{font:600 21px var(--f-display);line-height:1.25}
+.mf-mapgrid{display:grid;grid-template-columns:minmax(0,1fr) 230px;gap:14px;align-items:start}
+@media (max-width:720px){.mf-mapgrid{grid-template-columns:minmax(0,1fr)}}
+#mf-areamap{width:100%;display:block;background:var(--bg);border-radius:8px;border:1px solid var(--line)}
+.legendlist button{display:grid;grid-template-columns:12px minmax(0,1fr) auto;gap:4px 8px;align-items:center;width:100%;background:none;border:1px solid transparent;border-radius:6px;padding:5px 7px;color:var(--ink);cursor:pointer;text-align:left;font:13px var(--f-body)}
+.legendlist button:hover{background:var(--bg)}
+.legendlist button.on{border-color:var(--line);background:var(--bg)}
+.legendlist i{width:12px;height:12px;border-radius:3px;background:var(--c)}
+.legendlist .bar{grid-column:2/4;height:3px;border-radius:2px;background:var(--line);overflow:hidden}
+.legendlist .bar span{display:block;height:100%;background:var(--c)}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:12px 0}
+.tabs button{background:none;border:0;border-bottom:2px solid transparent;color:var(--muted);padding:7px 10px;cursor:pointer;font:600 13px var(--f-body)}
+.tabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
+.flist{display:grid;gap:6px}
+.frow{display:grid;grid-template-columns:minmax(0,1fr) auto 28px;gap:10px;align-items:center;padding:8px 10px 8px 12px;border:1px solid var(--line);border-left:4px solid var(--c);border-radius:8px;cursor:pointer}
+.frow:hover,.frow.on{background:var(--bg)}
+.fval{text-align:right}
+.frow .x{background:none;border:0;color:var(--muted);cursor:pointer;font-size:14px}
 .crops{display:flex;flex-wrap:wrap;gap:6px}.crop.chip{border:1px solid transparent;cursor:pointer;font:inherit;font-size:.85em}.crop.chip.on{border-color:var(--c)}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}.seg button{border:0;border-radius:0;background:transparent;color:var(--muted);padding:4px 10px;cursor:pointer}.seg button.on{background:var(--accent);color:#111}
 #mapg.fieldmode path.d{fill:#232a3a;stroke:#2f384c}
@@ -133,10 +160,12 @@ section[hidden],.ctl[hidden]{display:none}
 </section>
 
 <section id="page-myfields" hidden>
-  <div class="grid" style="padding-block:14px">
-    <div class="card" style="position:relative"><h2>Study areas</h2><div id="mf-areas"></div><div class="tip" id="mf-tip"></div>
-      <h2 style="margin-top:18px">My saved fields</h2><div id="mf-list"></div></div>
-    <div class="card" id="mf-detail" aria-live="polite"></div>
+  <div class="mf-layout">
+    <div class="card mf-main" style="position:relative"><div id="mf-areas"></div><div class="tip" id="mf-tip"></div></div>
+    <div class="mf-side">
+      <div class="card" id="mf-detail" aria-live="polite"></div>
+      <div class="card"><h2 class="mf-h">My saved fields</h2><div id="mf-list"></div></div>
+    </div>
   </div>
 </section>
 

@@ -13,7 +13,9 @@ const ZCOL = ["#d9534f", "#f0ad4e", "#2e9e5b"];
 export const EXAMPLES = [{ area: "pilot", year: 2025, id: 8702226 }, { area: "selhausen", year: 2025, id: 8312694 },
                          { area: "north", year: 2025, id: 8910847 }, { area: "south", year: 2025, id: 8965510 }];
 let ST = loadMyFields(safeStorage(), EXAMPLES);
-let CUR = null;                       // {area, year, id, px: Uint8Array [weeks x n], idx}
+let CUR = null;
+const AREA_NAMES = { pilot: "Pilot · Düren", selhausen: "Selhausen", north: "North", south: "South" };
+const AV = { area: "pilot", year: 2025, crop: null, geo: null, series: null };   // the study area shown
 const PXIDX = {};
 
 function safeStorage() { try { return window.localStorage; } catch (e) { return null; } }
@@ -55,19 +57,19 @@ function periodMean(pb, weeks, from, to) {
   return out;
 }
 
-const rm = f => `<button data-rm="${key(f)}" aria-label="Remove field ${f.id}">✕</button>`;
+const rm = f => `<button class="x" data-rm="${key(f)}" aria-label="Remove field ${f.id}">✕</button>`;
 
+// one saved field as a compact row: crop colour stripe, crop and field, this week's LAI, vs median, alert
 function listRow(f, data) {
   const s = data && data.series.fields[f.id], w = data && data.week;
-  if (!s) return `<tr><td>${f.id}</td><td colspan="6">data not available for ${f.area} ${f.year}</td><td>${rm(f)}</td></tr>`;
-  const med = ARABLE.has(s.group) ? groupMedian(data.series.fields, s.group, w, 10) : null, dm = s.lai[w] != null && med ? s.lai[w] - med : null;
-  const vm = vsMedianText(s.lai[w], med, s.lai_unc[w]);
-  const dv = w > 0 && s.lai[w] != null && s.lai[w - 1] != null ? s.lai[w] - s.lai[w - 1] : null;
-  const ch = dv == null ? "–" : withinNoise(dv, s.lai_unc[w] ?? 0) ? "within noise" : (dv > 0 ? "▲ " : "▼ ") + Math.abs(dv).toFixed(1);
-  const al = s.alert[w] === 1 ? "below median" : s.alert[w] === 2 ? "falling" : "";
-  return `<tr data-k="${key(f)}" ${CUR && key(CUR) === key(f) ? 'style="background:var(--accent-soft)"' : ""}>
-    <td>${f.id}${data.partial ? " ⚠" : ""}</td><td>${badge(s.group, data.crop)} <span class="note">${f.year}</span></td><td>${s.lai[w] == null ? noDataReason(s.src, w) || "no data" : fmtUnc(s.lai[w], s.lai_unc[w], 1)}</td>
-    <td>${vm}</td><td>${ch}</td><td>${sourceLabel(s.src[w])}${s.season[w] ? "" : " · off-season"}</td><td class="lose">${al}</td><td>${rm(f)}</td></tr>`;
+  if (!s) return `<div class="frow"><div><b>Field ${f.id}</b><div class="note">data not available for ${f.area} ${f.year}</div></div><div></div>${rm(f)}</div>`;
+  const cs = cropStyle(s.group, data.crop), med = ARABLE.has(s.group) ? groupMedian(data.series.fields, s.group, w, 10) : null;
+  const al = s.alert[w] === 1 ? "below the median" : s.alert[w] === 2 ? "falling while others rise" : "";
+  const on = CUR && key(CUR) === key(f);
+  return `<div class="frow${on ? " on" : ""}" data-k="${key(f)}" style="--c:${cs.colour}">
+    <div><b>${cs.label}</b>${data.partial ? ' <span title="only partly inside the study area">⚠</span>' : ""}<div class="note">field ${f.id} · ${f.year} · ${AREA_NAMES[f.area] || f.area}</div></div>
+    <div class="fval"><b>${s.lai[w] == null ? "–" : fmtUnc(s.lai[w], s.lai_unc[w], 1)}</b><div class="note">${s.lai[w] == null ? noDataReason(s.src, w) || "no data" : `LAI · ${vsMedianText(s.lai[w], med, s.lai_unc[w]).replace(/ \(.*\)$/, "")} vs median`}</div>
+      ${al ? `<div class="pill bad" style="margin-top:2px">${al}</div>` : ""}</div>${rm(f)}</div>`;
 }
 
 export async function render() {
@@ -92,9 +94,9 @@ export async function render() {
   }
   const crop = x => (x.d && x.d.series.fields[x.f.id] ? cropStyle(x.d.series.fields[x.f.id].group, x.d.crop).label : "~");
   rows.sort((a, b) => a.sort - b.sort || crop(a).localeCompare(crop(b)) || a.f.id - b.f.id);   // alerts first, then by crop
-  box.innerHTML = `<div class="tbl"><table><thead><tr><th>Field</th><th>Crop · season</th><th>Green LAI</th><th>vs median</th><th>Δ week</th><th>Source</th><th>Alert</th><th></th></tr></thead>
-    <tbody>${rows.map(x => listRow(x.f, x.d)).join("")}</tbody></table></div><p class="note">${rows.some(x => x.d) ? `Week shown: ${rows.find(x => x.d).d.series.weeks[rows.find(x => x.d).d.week]}` : ""}${rows.some(x => x.d?.partial) ? " · ⚠ = only partly inside the study area" : ""} (change it with the date slider in the Explorer). Click a row to open the field.</p>`;
-  box.querySelectorAll("tr[data-k]").forEach(tr => tr.onclick = e => {
+  box.innerHTML = `<div class="flist">${rows.map(x => listRow(x.f, x.d)).join("")}</div>
+    <p class="note">${rows.some(x => x.d) ? `Week of ${rows.find(x => x.d).d.series.weeks[rows.find(x => x.d).d.week]}` : ""}${rows.some(x => x.d?.partial) ? " · ⚠ only partly inside the study area" : ""} · click a field to open it</p>`;
+  box.querySelectorAll(".frow[data-k]").forEach(tr => tr.onclick = e => {
     if (e.target.dataset.rm) return;
     const f = ST.fields.find(x => key(x) === tr.dataset.k); openField(f).catch(() => {});
   });
@@ -108,34 +110,44 @@ async function openField(f) {
   if (!s || !geo) { document.getElementById("mf-detail").innerHTML = `<p class="note">Data for field ${f.id} (${f.area} ${f.year}) are not available.</p>`; return; }
   const pb = await pixelBlock(f.area, f.year, f.id);
   const w0 = Math.max(0, d.series.weeks.findIndex(x => x >= (FV.active && FV.year === f.year ? d.series.weeks[FV.week] : `${f.year}-05-20`)));
-  CUR = { ...f, pb, s, geo, weeks: d.series.weeks, rgb: d.rgb, week: w0, layer: "lai" };
+  CUR = { ...f, pb, s, geo, weeks: d.series.weeks, rgb: d.rgb, week: w0, layer: "lai", tab: CUR?.tab || "overview" };
   render();
   const arable = ARABLE.has(s.group), rates = ST.rates[f.id] || ["", "", ""];
-  const det = document.getElementById("mf-detail");
+  const det = document.getElementById("mf-detail"), cs = cropStyle(s.group, geo.properties.crop), saved = ST.fields.some(x => key(x) === key(f));
   const src = SOURCE_COLOURS.map((c, i) => i ? `<span style="margin-right:10px;white-space:nowrap"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c}"></span> ${sourceLabel(i)}</span>` : "").join("");
-  const cs = cropStyle(s.group, geo.properties.crop);
-  det.innerHTML = `<h2>${badge(s.group, geo.properties.crop)} Field ${f.id}</h2><div class="note">${geo.properties.crop} (NRW register) · ${geo.properties.ha} ha · season ${f.year} · study area ${f.area}</div>
+  det.innerHTML = `
+    <div class="mf-head" style="align-items:flex-start">
+      <div><div class="crop" style="--c:${cs.colour}"><i></i>${cs.label}</div><h2 class="mf-h" style="margin-top:6px">Field ${f.id}</h2>
+        <div class="note">${geo.properties.ha} ha · season ${f.year} · ${AREA_NAMES[f.area] || f.area} · ${geo.properties.crop} (NRW register)</div></div>
+      ${saved ? '<span class="note">Saved ✓</span>' : '<button id="mf-save">Save field</button>'}
+    </div>
     ${geo.properties.partial ? '<p><span class="pill bad">only partly inside the study area: maps and zones cover the inside part only; exports disabled</span></p>' : ""}
-    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0">
-      <span class="seg">${[["lai", "Green LAI"], ["ndvi", "NDVI"], ["zones", "Zones"]].map(([k, t]) => `<button data-layer="${k}" class="${k === "lai" ? "on" : ""}">${t}</button>`).join("")}</span>
-      <input type="range" id="mf-week" min="0" max="${d.series.weeks.length - 1}" value="${w0}" style="flex:1 1 200px" aria-label="Week"><b id="mf-week-lbl"></b>
+    <div class="tabs" role="tablist">${[["overview", "Overview"], ["charts", "Weekly charts"], ["zones", "Zones & export"]].map(([k, t]) => `<button role="tab" data-tab="${k}" class="${k === CUR.tab ? "on" : ""}">${t}</button>`).join("")}</div>
+    <div data-pane="overview">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <span class="seg">${[["lai", "Green LAI"], ["ndvi", "NDVI"], ["zones", "Zones"]].map(([k, t]) => `<button data-layer="${k}" class="${k === "lai" ? "on" : ""}">${t}</button>`).join("")}</span>
+        <input type="range" id="mf-week" min="0" max="${d.series.weeks.length - 1}" value="${w0}" style="flex:1 1 160px" aria-label="Week"><b id="mf-week-lbl" class="note"></b>
+      </div>
+      <canvas id="mf-map" width="360" height="300" style="width:100%;background:var(--bg);border-radius:8px;border:2px solid ${cs.colour}"></canvas>
+      <div class="legend" id="mf-legend"></div><div class="note" id="mf-map-cap"></div>
+      <div id="mf-kpi" class="kpis" style="margin-top:10px"></div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
-      <div><canvas id="mf-map" width="300" height="300" style="width:100%;max-width:300px;background:var(--bg);border-radius:8px;border:2px solid ${cs.colour}"></canvas>
-        <div class="legend" id="mf-legend"></div><div class="note" id="mf-map-cap"></div></div>
+    <div data-pane="charts">
+      <h3>Weekly green LAI</h3><div id="mf-lai-chart"></div>
+      <h3>Weekly NDVI</h3><div id="mf-ndvi-chart"></div>
+      <p class="note">${src}<br>Band: ± typical error. Shaded weeks: before sowing / after harvest. Dashed: selected week (Overview slider).</p>
     </div>
-    <div id="mf-kpi" class="kpis" style="margin-top:10px"></div>
-    <h3>Weekly green LAI</h3><div id="mf-lai-chart"></div>
-    <h3>Weekly NDVI</h3><div id="mf-ndvi-chart"></div>
-    <p class="note">${src}<br>Band: ± typical error of the value. Shaded weeks: before sowing / after harvest (previous crop, cover crop or bare soil). Dashed: selected week.</p>
-    ${arable ? `<h3>Zones for fertiliser</h3>
-    <p><label>From <input type="date" id="mf-from" value="${f.year}-04-01"></label> <label>to <input type="date" id="mf-to" value="${f.year}-06-30"></label></p>
-    <p class="note">Zones = thirds of the field by mean green LAI over the period. Rates are yours (kg/ha); the platform supplies the zones.</p>
-    <p>${["weak", "mid", "strong"].map((n, i) => `<label style="margin-right:10px"><span style="display:inline-block;width:10px;height:10px;background:${ZCOL[i]};border-radius:2px"></span> ${n} <input type="number" min="0" max="400" step="1" style="width:70px" data-z="${i}" value="${rates[i]}"> kg/ha</label>`).join("")}</p>
+    <div data-pane="zones">
+    ${arable ? `<p><label>From <input type="date" id="mf-from" value="${f.year}-04-01"></label> <label>to <input type="date" id="mf-to" value="${f.year}-06-30"></label></p>
+    <p class="note">Zones = thirds of the field by mean green LAI over the period (shown on the Overview map with "Zones"). Rates are yours (kg/ha); the platform supplies the zones.</p>
+    <p>${["weak", "mid", "strong"].map((n, i) => `<label style="margin-right:10px;white-space:nowrap"><span style="display:inline-block;width:10px;height:10px;background:${ZCOL[i]};border-radius:2px"></span> ${n} <input type="number" min="0" max="400" step="1" style="width:70px" data-z="${i}" value="${rates[i]}"> kg/ha</label>`).join("")}</p>
     <p><button id="mf-iso" class="pill">Export ISO-XML</button> <button id="mf-gis">Export GIS (GeoJSON)</button> <button id="mf-print">Print report</button></p>
-    <p class="note" id="mf-msg"></p>` : `<p class="note">Zones and exports are offered for arable crops only (this field: ${s.group}).</p>`}
-    <p>${ST.fields.some(x => key(x) === key(f)) ? '<span class="note">Saved in your fields ✓</span>' : '<button id="mf-save">Save to my fields</button>'}</p>
+    <p class="note" id="mf-msg"></p>` : `<p class="note">Zones and exports are offered for arable crops only (this field: ${cs.label}).</p>`}
+    </div>
     ${attribution()}`;
+  const showTab = t => { CUR.tab = t; det.querySelectorAll("[data-pane]").forEach(p => { p.hidden = p.dataset.pane !== t; }); det.querySelectorAll("button[data-tab]").forEach(b => b.classList.toggle("on", b.dataset.tab === t)); };
+  det.querySelectorAll("button[data-tab]").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+  showTab(CUR.tab);
   const sv = document.getElementById("mf-save"); if (sv) sv.onclick = () => add({ area: f.area, year: f.year, id: f.id });
   det.querySelectorAll("button[data-layer]").forEach(b => b.onclick = () => {
     CUR.layer = b.dataset.layer; det.querySelectorAll("button[data-layer]").forEach(x => x.classList.toggle("on", x === b)); paint();
@@ -279,8 +291,6 @@ function download(blob, name) {
 }
 
 // ---- study areas: every registered field of an area, coloured by crop, with crop filter and per-crop curves ----
-const AREA_NAMES = { pilot: "Pilot · Düren", selhausen: "Selhausen", north: "North", south: "South" };
-const AV = { area: "pilot", year: 2025, crop: null, geo: null, series: null };
 
 export async function renderAreas() {
   const box = document.getElementById("mf-areas");
@@ -292,19 +302,38 @@ export async function renderAreas() {
   AV.geo = d.geo; AV.series = d.series;
   const props = d.geo.features.map(f => f.properties).filter(p => d.series.fields[p.id]);
   const all = cropSummary(props), total = all.reduce((a, c) => a + c.ha, 0);
-  // main crops (>= 1 % of the area, at most 12) get their own chip; the long tail is grouped as "Other crops"
+  // main crops (>= 1 % of the area, at most 12) get their own legend row; the long tail is grouped as "Other crops"
   const main = all.filter((c, i) => i < 12 && c.ha >= 0.01 * total), rest = all.filter(c => !main.includes(c));
   AV.other = new Set(rest.map(c => c.label));
-  const crops = main.concat(rest.length ? [{ label: "Other crops", colour: "#7b8496", n: rest.reduce((a, c) => a + c.n, 0), ha: rest.reduce((a, c) => a + c.ha, 0) }] : []);
+  const rows = main.concat(rest.length ? [{ label: "Other crops", colour: "#7b8496", n: rest.reduce((a, c) => a + c.n, 0), ha: rest.reduce((a, c) => a + c.ha, 0) }] : []);
+  const w = Math.max(0, d.series.weeks.findIndex(x => x >= `${AV.year}-05-20`));
+  const arable = props.filter(p => ARABLE.has(p.group)).map(p => d.series.fields[p.id].lai[w]).filter(v => v != null).sort((a, b) => a - b);
+  const medLai = arable.length ? arable[Math.floor(arable.length / 2)] : null;
   box.innerHTML = `
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-      <span class="seg">${Object.keys(FV.idx.areas).map(a => `<button data-area="${a}" class="${a === AV.area ? "on" : ""}">${AREA_NAMES[a] || a}</button>`).join("")}</span>
-      <label class="note">Season <select id="mf-year">${years.map(y => `<option ${y === AV.year ? "selected" : ""}>${y}</option>`).join("")}</select></label>
+    <div class="mf-head">
+      <div><h2 class="mf-h">Study area ${AREA_NAMES[AV.area] || AV.area}</h2><div class="note">North Rhine-Westphalia · 8 × 8 km · weekly 10 m green LAI and NDVI</div></div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <span class="seg">${Object.keys(FV.idx.areas).map(a => `<button data-area="${a}" class="${a === AV.area ? "on" : ""}">${AREA_NAMES[a] || a}</button>`).join("")}</span>
+        <select id="mf-year" aria-label="Season">${years.map(y => `<option ${y === AV.year ? "selected" : ""}>${y}</option>`).join("")}</select>
+      </div>
     </div>
-    <p class="note" style="margin:8px 0">${props.length} registered fields · ${Math.round(total)} ha · click a crop to show only its fields, click a field to open it</p>
-    <div class="crops">${[{ label: "All crops", colour: "#8b96b4", n: props.length, ha: total }].concat(crops).map(c =>
-      `<button class="crop chip ${(AV.crop || "All crops") === c.label ? "on" : ""}" data-crop="${c.label}" style="--c:${c.colour}"><i></i>${c.label} <span class="note">${c.n} · ${Math.round(c.ha)} ha</span></button>`).join("")}</div>
-    <svg id="mf-areamap" viewBox="0 0 520 520" role="img" aria-label="Fields of the study area coloured by crop" style="width:100%;max-width:560px;display:block;margin-top:8px;background:var(--bg);border-radius:8px"></svg>
+    <div class="mf-stats">
+      <div class="stat"><div class="k">Fields</div><div class="v">${props.length.toLocaleString("en")}</div></div>
+      <div class="stat"><div class="k">Area</div><div class="v">${Math.round(total).toLocaleString("en")} ha</div></div>
+      <div class="stat"><div class="k">Crops</div><div class="v">${all.length}</div><div class="note">${main.length} main</div></div>
+      <div class="stat"><div class="k">Median LAI, arable</div><div class="v">${medLai == null ? "–" : medLai.toFixed(1)}</div><div class="note">week of ${d.series.weeks[w]}</div></div>
+    </div>
+    <div class="mf-mapgrid">
+      <svg id="mf-areamap" viewBox="0 0 520 520" role="img" aria-label="Fields of the study area coloured by crop"></svg>
+      <aside class="legendlist" aria-label="Crops">
+        <div class="k" style="margin-bottom:4px">Crops · click to filter</div>
+        ${[{ label: "All crops", colour: "#8b96b4", n: props.length, ha: total }].concat(rows).map(c => `
+          <button data-crop="${c.label}" class="${(AV.crop || "All crops") === c.label ? "on" : ""}" style="--c:${c.colour}">
+            <i></i><span>${c.label}</span><span class="note">${Math.round(c.ha)} ha</span>
+            <span class="bar"><span style="width:${(100 * c.ha / total).toFixed(1)}%"></span></span>
+          </button>`).join("")}
+      </aside>
+    </div>
     <h3>Median green LAI per crop</h3><div id="mf-areachart"></div>`;
   box.querySelectorAll("button[data-area]").forEach(b => b.onclick = () => { AV.area = b.dataset.area; AV.crop = null; renderAreas(); });
   document.getElementById("mf-year").onchange = e => { AV.year = +e.target.value; renderAreas(); };
