@@ -1,12 +1,18 @@
 // MY FIELDS: fields picked on the map (kept in this browser, no accounts), list + map, zones, rates, exports.
 import { loadMyFields, saveMyFields, zones, fmtUnc, sourceLabel, withinNoise, nearestRgbDate, clearRgbDate,
-         affineFromCorners, invertAffine, applyAffine, groupMedian, exportCheck, noDataReason } from "./field_core.js";
+         affineFromCorners, invertAffine, applyAffine, groupMedian, exportCheck, noDataReason, fieldRgbDate,
+         seriesChart, SOURCE_COLOURS, legendSpec, cropStyle, vsMedianText } from "./field_core.js";
+const badge = (g, c) => { const k = cropStyle(g, c); return `<span class="crop" style="--c:${k.colour}"><i></i>${k.label}</span>`; };
+
 import { buildTaskData } from "./isoxml.js";
 import { FV, loadSeason, attribution, url } from "./field_view.js";
 
 const ARABLE = new Set(["wheat", "barley", "other cereal", "rapeseed", "maize", "potato", "sugar beet"]);
 const ZCOL = ["#d9534f", "#f0ad4e", "#2e9e5b"];
-let ST = loadMyFields(safeStorage());
+// example fields shown on a first visit (one per study area, season 2025); users can remove them or add their own
+export const EXAMPLES = [{ area: "pilot", year: 2025, id: 8702226 }, { area: "selhausen", year: 2025, id: 8312694 },
+                         { area: "north", year: 2025, id: 8910847 }, { area: "south", year: 2025, id: 8965510 }];
+let ST = loadMyFields(safeStorage(), EXAMPLES);
 let CUR = null;                       // {area, year, id, px: Uint8Array [weeks x n], idx}
 const PXIDX = {};
 
@@ -49,30 +55,18 @@ function periodMean(pb, weeks, from, to) {
   return out;
 }
 
-function drawPixels(canvas, pb, colourOf) {
-  const { r, c } = pb.e, r0 = Math.min(...r), c0 = Math.min(...c), h = Math.max(...r) - r0 + 1, w = Math.max(...c) - c0 + 1;
-  const sc = Math.max(1, Math.floor(Math.min(canvas.width / w, canvas.height / h)));
-  const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  for (let i = 0; i < pb.e.n; i++) {
-    const col = colourOf(i);
-    if (!col) continue;
-    ctx.fillStyle = col; ctx.fillRect((c[i] - c0) * sc, (r[i] - r0) * sc, sc, sc);
-  }
-}
-
 const rm = f => `<button data-rm="${key(f)}" aria-label="Remove field ${f.id}">✕</button>`;
 
 function listRow(f, data) {
   const s = data && data.series.fields[f.id], w = data && data.week;
-  if (!s) return `<tr><td>${f.id}</td><td colspan="7">data not available for ${f.area} ${f.year}</td><td>${rm(f)}</td></tr>`;
-  const med = groupMedian(data.series.fields, s.group, w), dm = s.lai[w] != null && med ? s.lai[w] - med : null;
-  const vm = dm == null ? "–" : `${dm > 0 ? "+" : ""}${Math.round(100 * dm / med)} %${withinNoise(dm, s.lai_unc[w] ?? 0) ? " (within noise)" : ""}`;
+  if (!s) return `<tr><td>${f.id}</td><td colspan="6">data not available for ${f.area} ${f.year}</td><td>${rm(f)}</td></tr>`;
+  const med = ARABLE.has(s.group) ? groupMedian(data.series.fields, s.group, w, 10) : null, dm = s.lai[w] != null && med ? s.lai[w] - med : null;
+  const vm = vsMedianText(s.lai[w], med, s.lai_unc[w]);
   const dv = w > 0 && s.lai[w] != null && s.lai[w - 1] != null ? s.lai[w] - s.lai[w - 1] : null;
   const ch = dv == null ? "–" : withinNoise(dv, s.lai_unc[w] ?? 0) ? "within noise" : (dv > 0 ? "▲ " : "▼ ") + Math.abs(dv).toFixed(1);
   const al = s.alert[w] === 1 ? "below median" : s.alert[w] === 2 ? "falling" : "";
   return `<tr data-k="${key(f)}" ${CUR && key(CUR) === key(f) ? 'style="background:var(--accent-soft)"' : ""}>
-    <td>${f.id}${data.partial ? " ⚠" : ""}</td><td>${s.group}</td><td>${f.year}</td><td>${s.lai[w] == null ? noDataReason(s.src, w) || "no data" : fmtUnc(s.lai[w], s.lai_unc[w], 1)}</td>
+    <td>${f.id}${data.partial ? " ⚠" : ""}</td><td>${badge(s.group, data.crop)} <span class="note">${f.year}</span></td><td>${s.lai[w] == null ? noDataReason(s.src, w) || "no data" : fmtUnc(s.lai[w], s.lai_unc[w], 1)}</td>
     <td>${vm}</td><td>${ch}</td><td>${sourceLabel(s.src[w])}${s.season[w] ? "" : " · off-season"}</td><td class="lose">${al}</td><td>${rm(f)}</td></tr>`;
 }
 
@@ -80,7 +74,11 @@ export async function render() {
   const box = document.getElementById("mf-list");
   if (!box) return;
   if (!ST.fields.length) {
-    box.innerHTML = `<p class="note">No fields yet. In the Explorer, zoom into an NRW study area, click a field and press <b>Add to my fields</b>. Your choice stays in this browser only.</p>`;
+    box.innerHTML = `<p>No fields yet. Your list is kept in this browser only (no account needed), so it starts empty on every new device.</p>
+      <ol class="note"><li>Open the <b>Explorer</b> and click one of the four orange squares in NRW (or zoom in with Ctrl + scroll).</li>
+      <li>Click a field, then <b>Add to my fields</b>.</li><li>Come back here for its zones, rates and the tractor (ISO-XML) export.</li></ol>
+      <p><button id="mf-example">Add the 4 example fields</button> <span class="note">wheat, sugar beet, maize and barley, one per study area, season 2025</span></p>`;
+    document.getElementById("mf-example").onclick = () => { EXAMPLES.forEach(f => { if (!ST.fields.some(x => key(x) === key(f))) ST.fields.push(f); }); persist(); render(); };
     document.getElementById("mf-detail").innerHTML = "";
     return;
   }
@@ -89,17 +87,19 @@ export async function render() {
     let d = null;
     try { d = await loadSeason(f.area, f.year); } catch (e) { rows.push({ f, d: null, sort: 2 }); continue; }   // removed after a rebuild
     const wk = d.series.weeks, week = FV.active && FV.year === f.year ? FV.week : Math.max(0, wk.findIndex(w => w >= `${f.year}-05-20`));
-    const partial = !!d.geo.features.find(x => x.properties.id === f.id)?.properties.partial;
-    rows.push({ f, d: { series: d.series, week, partial }, sort: d.series.fields[f.id]?.alert[week] ? 0 : 1 });
+    const P = d.geo.features.find(x => x.properties.id === f.id)?.properties || {};
+    rows.push({ f, d: { series: d.series, week, partial: !!P.partial, crop: P.crop }, sort: d.series.fields[f.id]?.alert[week] ? 0 : 1 });
   }
-  rows.sort((a, b) => a.sort - b.sort || a.f.id - b.f.id);
-  box.innerHTML = `<div class="tbl"><table><thead><tr><th>Field</th><th>Crop</th><th>Season</th><th>Green LAI</th><th>vs median</th><th>Δ week</th><th>Source</th><th>Alert</th><th></th></tr></thead>
+  const crop = x => (x.d && x.d.series.fields[x.f.id] ? cropStyle(x.d.series.fields[x.f.id].group, x.d.crop).label : "~");
+  rows.sort((a, b) => a.sort - b.sort || crop(a).localeCompare(crop(b)) || a.f.id - b.f.id);   // alerts first, then by crop
+  box.innerHTML = `<div class="tbl"><table><thead><tr><th>Field</th><th>Crop · season</th><th>Green LAI</th><th>vs median</th><th>Δ week</th><th>Source</th><th>Alert</th><th></th></tr></thead>
     <tbody>${rows.map(x => listRow(x.f, x.d)).join("")}</tbody></table></div><p class="note">${rows.some(x => x.d) ? `Week shown: ${rows.find(x => x.d).d.series.weeks[rows.find(x => x.d).d.week]}` : ""}${rows.some(x => x.d?.partial) ? " · ⚠ = only partly inside the study area" : ""} (change it with the date slider in the Explorer). Click a row to open the field.</p>`;
   box.querySelectorAll("tr[data-k]").forEach(tr => tr.onclick = e => {
     if (e.target.dataset.rm) return;
     const f = ST.fields.find(x => key(x) === tr.dataset.k); openField(f).catch(() => {});
   });
   box.querySelectorAll("button[data-rm]").forEach(b => b.onclick = () => remove(ST.fields.find(x => key(x) === b.dataset.rm)));
+  if (!CUR) { const first = rows.find(x => x.d && x.d.series.fields[x.f.id]); if (first) openField(first.f).catch(() => {}); }   // never an empty detail
 }
 
 async function openField(f) {
@@ -107,17 +107,28 @@ async function openField(f) {
   const geo = d.geo.features.find(x => x.properties.id === f.id);
   if (!s || !geo) { document.getElementById("mf-detail").innerHTML = `<p class="note">Data for field ${f.id} (${f.area} ${f.year}) are not available.</p>`; return; }
   const pb = await pixelBlock(f.area, f.year, f.id);
-  CUR = { ...f, pb, s, geo, weeks: d.series.weeks, rgb: d.rgb };
+  const w0 = Math.max(0, d.series.weeks.findIndex(x => x >= (FV.active && FV.year === f.year ? d.series.weeks[FV.week] : `${f.year}-05-20`)));
+  CUR = { ...f, pb, s, geo, weeks: d.series.weeks, rgb: d.rgb, week: w0, layer: "lai" };
   render();
   const arable = ARABLE.has(s.group), rates = ST.rates[f.id] || ["", "", ""];
   const det = document.getElementById("mf-detail");
-  det.innerHTML = `<h2>Field ${f.id} · ${geo.properties.crop}</h2><div class="note">${s.group} · ${geo.properties.ha} ha · season ${f.year}</div>
+  const src = SOURCE_COLOURS.map((c, i) => i ? `<span style="margin-right:10px;white-space:nowrap"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c}"></span> ${sourceLabel(i)}</span>` : "").join("");
+  const cs = cropStyle(s.group, geo.properties.crop);
+  det.innerHTML = `<h2>${badge(s.group, geo.properties.crop)} Field ${f.id}</h2><div class="note">${geo.properties.crop} (NRW register) · ${geo.properties.ha} ha · season ${f.year} · study area ${f.area}</div>
     ${geo.properties.partial ? '<p><span class="pill bad">only partly inside the study area: maps and zones cover the inside part only; exports disabled</span></p>' : ""}
-    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px">
-      <div><canvas id="mf-rgb" width="220" height="220" style="width:100%"></canvas><div class="note" id="mf-rgb-cap"></div></div>
-      <div><canvas id="mf-lai" width="220" height="220" style="width:100%"></canvas><div class="note" id="mf-lai-cap"></div></div>
-      <div><canvas id="mf-zones" width="220" height="220" style="width:100%"></canvas><div class="note" id="mf-z-cap"></div></div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0">
+      <span class="seg">${[["lai", "Green LAI"], ["ndvi", "NDVI"], ["zones", "Zones"]].map(([k, t]) => `<button data-layer="${k}" class="${k === "lai" ? "on" : ""}">${t}</button>`).join("")}</span>
+      <input type="range" id="mf-week" min="0" max="${d.series.weeks.length - 1}" value="${w0}" style="flex:1 1 200px" aria-label="Week"><b id="mf-week-lbl"></b>
     </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+      <div><canvas id="mf-map" width="300" height="300" style="width:100%;max-width:300px;background:var(--bg);border-radius:8px;border:2px solid ${cs.colour}"></canvas>
+        <div class="legend" id="mf-legend"></div><div class="note" id="mf-map-cap"></div></div>
+      <div id="mf-rgb-box"><canvas id="mf-rgb" width="300" height="300" style="width:100%;max-width:300px;border-radius:8px"></canvas><div class="note" id="mf-rgb-cap"></div></div>
+    </div>
+    <div id="mf-kpi" class="kpis" style="margin-top:10px"></div>
+    <h3>Weekly green LAI</h3><div id="mf-lai-chart"></div>
+    <h3>Weekly NDVI</h3><div id="mf-ndvi-chart"></div>
+    <p class="note">${src}<br>Band: ± typical error of the value. Shaded weeks: before sowing / after harvest (previous crop, cover crop or bare soil). Dashed: selected week.</p>
     ${arable ? `<h3>Zones for fertiliser</h3>
     <p><label>From <input type="date" id="mf-from" value="${f.year}-04-01"></label> <label>to <input type="date" id="mf-to" value="${f.year}-06-30"></label></p>
     <p class="note">Zones = thirds of the field by mean green LAI over the period. Rates are yours (kg/ha); the platform supplies the zones.</p>
@@ -125,6 +136,10 @@ async function openField(f) {
     <p><button id="mf-iso" class="pill">Export ISO-XML</button> <button id="mf-gis">Export GIS (GeoJSON)</button> <button id="mf-print">Print report</button></p>
     <p class="note" id="mf-msg"></p>` : `<p class="note">Zones and exports are offered for arable crops only (this field: ${s.group}).</p>`}
     ${attribution()}`;
+  det.querySelectorAll("button[data-layer]").forEach(b => b.onclick = () => {
+    CUR.layer = b.dataset.layer; det.querySelectorAll("button[data-layer]").forEach(x => x.classList.toggle("on", x === b)); paint();
+  });
+  document.getElementById("mf-week").oninput = e => { CUR.week = +e.target.value; paint(); };
   paint();
   if (!arable) return;
   ["mf-from", "mf-to"].forEach(i => document.getElementById(i).onchange = paint);
@@ -150,25 +165,85 @@ function currentZones() {
   return { z: zones(Array.from(mean), CUR.pb.e.w), from, to };
 }
 
-function paint() {
-  const pb = CUR.pb, w = Math.max(0, CUR.weeks.findIndex(x => x >= (FV.active && FV.year === CUR.year ? CUR.weeks[FV.week] : `${CUR.year}-05-20`)));
-  const n = pb.e.n;
-  drawPixels(document.getElementById("mf-lai"), pb, i => { const v = pb.raw[w * n + i]; return v === pb.nodata ? null : d3.interpolateYlGn(Math.min(1, v / pb.scale / 5)); });
-  document.getElementById("mf-lai-cap").textContent = `Green LAI 10 m, week of ${CUR.weeks[w]}`;
-  const { z } = currentZones();
-  drawPixels(document.getElementById("mf-zones"), pb, i => (z.classes[i] < 0 ? null : ZCOL[z.n === 1 ? 1 : z.classes[i]]));
-  document.getElementById("mf-z-cap").textContent = z.n === 1 ? "One zone (field too small or too uniform)" : `${z.n} zones`;
-  const d = clearRgbDate(CUR.weeks, CUR.s.src, CUR.rgb, w);
-  if (!d) { document.getElementById("mf-rgb-cap").textContent = "No clear Sentinel-2 image of this field"; return; }
+// the field's own 10 m pixels: drawn 1:1 on a small canvas, then scaled up as one image (crisp, no seams)
+function fieldCanvas(canvas, pb, colourOf) {
+  const { r, c } = pb.e, r0 = Math.min(...r), c0 = Math.min(...c), h = Math.max(...r) - r0 + 1, w = Math.max(...c) - c0 + 1;
+  const off = document.createElement("canvas"); off.width = w; off.height = h;
+  const o = off.getContext("2d");
+  for (let i = 0; i < pb.e.n; i++) {
+    const col = colourOf(i);
+    if (col) { o.fillStyle = col; o.fillRect(c[i] - c0, r[i] - r0, 1, 1); }
+  }
+  const sc = Math.min(canvas.width / w, canvas.height / h), ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(off, (canvas.width - w * sc) / 2, (canvas.height - h * sc) / 2, w * sc, h * sc);
+}
+
+const PNGS = {};
+function areaPng(path) {                                  // the area's weekly overlay as pixel data (NDVI per pixel)
+  if (!PNGS[path]) PNGS[path] = new Promise((ok, bad) => {
+    const im = new Image();
+    im.onload = () => {
+      const cv = document.createElement("canvas"); cv.width = im.width; cv.height = im.height;
+      const x = cv.getContext("2d"); x.drawImage(im, 0, 0); ok(x.getImageData(0, 0, im.width, im.height));
+    };
+    im.onerror = bad; im.src = url(path);
+  });
+  return PNGS[path];
+}
+
+async function paint() {
+  const pb = CUR.pb, w = CUR.week, n = pb.e.n, s = CUR.s, wk = CUR.weeks[w];
+  document.getElementById("mf-week-lbl").textContent = `week of ${wk}`;
+  const map = document.getElementById("mf-map"), leg = document.getElementById("mf-legend"), cap = document.getElementById("mf-map-cap");
+  if (CUR.layer === "zones") {
+    const { z } = currentZones();
+    fieldCanvas(map, pb, i => (z.classes[i] < 0 ? null : ZCOL[z.n === 1 ? 1 : z.classes[i]]));
+    leg.innerHTML = ["weak", "mid", "strong"].map((t, i) => `<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${ZCOL[i]}"></span> ${t}</span>`).join(" ");
+    cap.textContent = z.n === 1 ? "One zone (field too small or too uniform)" : `${z.n} zones from the mean green LAI of the chosen period`;
+  } else {
+    const L = legendSpec(CUR.layer);
+    if (CUR.layer === "lai") fieldCanvas(map, pb, i => { const v = pb.raw[w * n + i]; return v === pb.nodata ? null : d3.interpolateYlGn(0.05 + 0.95 * Math.min(1, v / pb.scale / L.max)); });
+    else {
+      const img = await areaPng(`${CUR.area}_${CUR.year}/ndvi/${wk}.png`).catch(() => null);
+      fieldCanvas(map, pb, i => {
+        if (!img) return null;
+        const k = 4 * (pb.e.r[i] * img.width + pb.e.c[i]), a = img.data;
+        return a[k + 3] ? `rgb(${a[k]},${a[k + 1]},${a[k + 2]})` : null;
+      });
+    }
+    const stops = d3.range(0, 1.01, 0.1).map(t => d3.interpolateYlGn(0.05 + 0.95 * t));
+    leg.innerHTML = `<span>${L.min}</span><span class="bar" style="background:linear-gradient(90deg,${stops.join(",")})"></span><span>${L.max} ${L.unit}</span>`;
+    const sv = CUR.layer === "lai" ? s.src[w] : s.ndvi_src[w];
+    cap.textContent = `${CUR.layer === "lai" ? "Green LAI" : "NDVI"} per 10 m pixel, week of ${wk} · ${sourceLabel(sv)}`;
+  }
+  document.getElementById("mf-kpi").innerHTML = `
+    <div class="kpi"><div class="k">Green LAI</div><div class="v">${s.lai[w] == null ? "–" : fmtUnc(s.lai[w], s.lai_unc[w], 1)}</div><div class="s">${s.lai[w] == null ? noDataReason(s.src, w) || "no value" : sourceLabel(s.src[w])}</div></div>
+    <div class="kpi"><div class="k">NDVI</div><div class="v">${s.ndvi[w] == null ? "–" : fmtUnc(s.ndvi[w], s.ndvi_unc[w], 2)}</div><div class="s">${s.ndvi[w] == null ? noDataReason(s.ndvi_src, w) || "no value" : sourceLabel(s.ndvi_src[w])}</div></div>
+    <div class="kpi"><div class="k">Season</div><div class="v">${s.season[w] ? "in season" : "off-season"}</div><div class="s">${s.season[w] ? "the registered crop" : "previous crop / cover crop / bare soil"}</div></div>`;
+  document.getElementById("mf-lai-chart").innerHTML = seriesChart({ values: s.lai, unc: s.lai_unc, src: s.src, season: s.season, week: w, weeks: CUR.weeks, max: 6, label: "green LAI" });
+  document.getElementById("mf-ndvi-chart").innerHTML = seriesChart({ values: s.ndvi, unc: s.ndvi_unc, src: s.ndvi_src, season: s.season, week: w, weeks: CUR.weeks, max: 1, label: "NDVI" });
+  // Sentinel-2 true colour only when >= 95 % of this field was clear within 10 days of the week; otherwise not shown
+  const box = document.getElementById("mf-rgb-box"), d = fieldRgbDate(CUR.rgb, s.clr, wk);
+  box.hidden = !d;
+  if (!d) return;
   const img = new Image(), c = document.getElementById("mf-rgb"), { r, c: cc } = pb.e;
   img.onload = () => {
-    const r0 = Math.min(...r), c0 = Math.min(...cc), h = Math.max(...r) - r0 + 1, ww = Math.max(...cc) - c0 + 1;
-    const sc = Math.max(1, Math.floor(Math.min(c.width / ww, c.height / h))), ctx = c.getContext("2d");
+    const r0 = Math.min(...r), c0 = Math.min(...cc), h = Math.max(...r) - r0 + 1, ww = Math.max(...cc) - c0 + 1, pad = 3;
+    const sx = Math.max(0, c0 - pad), sy = Math.max(0, r0 - pad), sw = Math.min(800 - sx, ww + 2 * pad), sh = Math.min(800 - sy, h + 2 * pad);
+    const sc = Math.min(c.width / sw, c.height / sh), ox = (c.width - sw * sc) / 2, oy = (c.height - sh * sc) / 2, ctx = c.getContext("2d");
     ctx.imageSmoothingEnabled = false; ctx.clearRect(0, 0, c.width, c.height);
-    ctx.drawImage(img, c0, r0, ww, h, 0, 0, ww * sc, h * sc);
+    ctx.drawImage(img, sx, sy, sw, sh, ox, oy, sw * sc, sh * sc);
+    const inF = new Set(r.map((rr, i) => rr * 1000 + cc[i]));               // mark the field edge with small dots
+    ctx.fillStyle = "rgba(242,169,59,.95)";
+    for (let i = 0; i < r.length; i++) {
+      const edge = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([a, b]) => !inF.has((r[i] + a) * 1000 + cc[i] + b));
+      if (edge) ctx.fillRect(ox + (cc[i] - sx) * sc + sc * 0.35, oy + (r[i] - sy) * sc + sc * 0.35, sc * 0.3, sc * 0.3);
+    }
   };
   img.src = url(`${CUR.area}_${CUR.year}/rgb/${d}.jpg`);
-  document.getElementById("mf-rgb-cap").textContent = `Sentinel-2, ${d}`;
+  document.getElementById("mf-rgb-cap").textContent = `Sentinel-2 true colour, ${d} (≥ 95 % of the field clear)`;
 }
 
 function lonLatGrid() {

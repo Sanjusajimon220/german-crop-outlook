@@ -47,3 +47,9 @@ test("loadMyFields drops malformed entries instead of breaking the list", () => 
   const s = JSON.stringify({ fields: [null, {}, { area: "pilot", year: 2024, id: 7493815 }, { area: 3, year: "x", id: 1 }], rates: {} });
   assert.deepEqual(loadMyFields(mem([[KEY, s]])).fields, [{ area: "pilot", year: 2024, id: 7493815 }]);
 });
+
+test("a first visit starts with the example fields; an emptied list stays empty", () => {
+  const ex = [{ area: "pilot", year: 2025, id: 1 }, { area: "north", year: 2025, id: 2 }];
+  assert.deepEqual(loadMyFields(mem([]), ex).fields, ex);                                       // nothing stored yet
+  assert.deepEqual(loadMyFields(mem([[KEY, JSON.stringify({ fields: [], rates: {} })]]), ex).fields, []);
+});

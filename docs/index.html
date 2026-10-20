@@ -69,6 +69,8 @@ th{font:600 11px var(--f-body);letter-spacing:.06em;text-transform:uppercase;col
 .prose p,.prose li{line-height:1.6}
 section[hidden],.ctl[hidden]{display:none}
 #map path.f,#map path.area{vector-effect:non-scaling-stroke}
+.crop{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:999px;background:color-mix(in srgb,var(--c) 18%,transparent);color:var(--ink);font-size:.85em;font-weight:500;white-space:nowrap;vertical-align:middle}.crop i{width:9px;height:9px;border-radius:50%;background:var(--c)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}.seg button{border:0;border-radius:0;background:transparent;color:var(--muted);padding:4px 10px;cursor:pointer}.seg button.on{background:var(--accent);color:#111}
 #mapg.fieldmode path.d{fill:#232a3a;stroke:#2f384c}
 #map path.area{fill:var(--accent);fill-opacity:.12;stroke:var(--accent);stroke-opacity:.7;stroke-width:6;vector-effect:non-scaling-stroke;cursor:zoom-in}
 #map path.f{stroke:var(--ink);stroke-opacity:.55;stroke-width:.6;cursor:pointer}
@@ -110,6 +112,7 @@ section[hidden],.ctl[hidden]{display:none}
     <div class="ctl" id="fieldlayer-ctl" hidden><label for="fieldlayer">Field layer</label><select id="fieldlayer">
       <option value="lai">Green LAI, 10 m</option>
       <option value="ndvi">NDVI, 10 m</option>
+      <option value="rgb">Sentinel-2 true colour</option>
       <option value="change">Change since last week</option>
       <option value="source">Data source</option>
       <option value="unc">Uncertainty</option>
@@ -217,7 +220,8 @@ function drawMap() {
   const sel = d3.select("#mapg").selectAll("path.d").data(GEO.features, f => f.properties.code);
   sel.join("path").attr("class", f => "d" + (f.properties.code === S.sel ? " sel" : "")).attr("d", path)
     .attr("fill", f => { const v = valueFor(f.properties.code); return v == null ? css("--line") : scale(v); })
-    .on("mousemove", (e, f) => { const t = document.getElementById("tip"), v = valueFor(f.properties.code), r = rowFor(f.properties.code);
+    .on("mousemove", (e, f) => { if (window.FIELDMODE && window.FIELDMODE.active) { document.getElementById("tip").style.display = "none"; return; }
+      const t = document.getElementById("tip"), v = valueFor(f.properties.code), r = rowFor(f.properties.code);
       t.style.display = "block"; const b = document.querySelector(".mapbox").getBoundingClientRect();
       t.style.left = (e.clientX - b.left + 12) + "px"; t.style.top = (e.clientY - b.top + 12) + "px";
       const w = waterFor(f.properties.code), nd = ndviAt(f.properties.code);
@@ -226,7 +230,7 @@ function drawMap() {
         + (w && w[0] != null ? `<br>water use ${fmt(w[0], 0)} of ${fmt(w[1], 0)} mm demand` : w && w[2] != null ? `<br>water supply ratio ${fmt(w[2])}` : "")
         + (nd != null ? `<br>greenness (NDVI) ${fmt(nd)}` : ""); })
     .on("mouseleave", () => document.getElementById("tip").style.display = "none")
-    .on("click", (e, f) => { S.sel = f.properties.code; drawMap(); drawPanel(); });
+    .on("click", (e, f) => { if (window.FIELDMODE && window.FIELDMODE.active) return; S.sel = f.properties.code; drawMap(); drawPanel(); });
   const unit = { median: "t/ha", official: "t/ha", dev: "% vs official", width: "t/ha", water: "use / demand", wuse: "mm", wdem: "mm", ndvi: "NDVI" }[S.layer];
   const stops = d3.range(0, 1.01, .1).map(t => scale(domain[0] + t * (domain[1] - domain[0])));
   document.getElementById("legend").innerHTML = `<span>${fmt(domain[0], S.layer === "dev" ? 0 : 2)}</span><span class="bar" style="background:linear-gradient(90deg,${stops.join(",")})"></span><span>${fmt(domain[1], S.layer === "dev" ? 0 : 2)} ${unit}</span>`;

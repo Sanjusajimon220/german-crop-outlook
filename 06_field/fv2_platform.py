@@ -26,6 +26,21 @@ def field_mean(vals, w, inv, n_fields):
     return out
 
 
+CLEAR_SHARE = 0.95                                            # a field image is shown only if >= 95 % of the field was clear
+
+
+def clear_dates(clear, w, inv, n_fields, min_share=CLEAR_SHARE):
+    """clear [dates x pixels] bool (clear Sentinel-2 value), w pixel weights, inv pixel -> field.
+    Returns per field the date indices with >= min_share of its area clear, and per date the clear share of all
+    field area (for choosing the map's true-colour image)."""
+    tot = np.bincount(inv, weights=w, minlength=n_fields)
+    per = np.stack([np.bincount(inv, weights=w * c, minlength=n_fields) for c in clear])          # dates x fields
+    ok = per >= min_share * np.where(tot > 0, tot, np.inf)[None, :]
+    clr = [np.flatnonzero(ok[:, k]).tolist() for k in range(n_fields)]
+    area = (clear * w[None, :]).sum(1) / max(w.sum(), 1e-9)
+    return clr, area
+
+
 def alerts(field, unc, median):
     """Per week: 1 = below the median of the same crop by more than the uncertainty, 2 weeks in a row;
     2 = falling while the median rises, with the divergence beyond the uncertainty, 2 weeks in a row; else 0."""
@@ -46,6 +61,7 @@ def alerts(field, unc, median):
 
 WINTER_SOW_WEEKS = 10                                         # weeks from 1 Oct searched for winter sowing (Oct - early Dec)
 SPRING_FROM_WEEK = 21                                         # spring crops: sowing searched from ~1 March on
+SPRING_PEAK_FROM_WEEK = 34                                    # spring crops: their summer peak is searched from ~late May
 
 
 def season_mask(lai, group):
@@ -59,10 +75,13 @@ def season_mask(lai, group):
         return [0] * n
     xx = np.where(np.isfinite(x), x, np.inf)
     if group in SPRING:
+        # sowing = the low point between ~1 March and the crop's own summer peak (searched from late May), so a cover
+        # crop or grass that greens up again in March-April is not taken for the spring crop
         lo = min(SPRING_FROM_WEEK, n - 1)
-        rise = [i for i in range(lo, n) if np.isfinite(x[i]) and x[i] > SEASON_LAI]
-        stop = rise[0] if rise else n
-        start = lo + int(np.argmin(xx[lo:stop])) if stop > lo else lo
+        hi0 = min(SPRING_PEAK_FROM_WEEK, n - 1)
+        xp = np.where(np.isfinite(x), x, -np.inf)
+        peak = hi0 + int(np.argmax(xp[hi0:])) if np.isfinite(x[hi0:]).any() else n - 1
+        start = lo + int(np.argmin(xx[lo:peak + 1])) if peak >= lo else lo
     else:
         start = int(np.argmin(xx[: min(WINTER_SOW_WEEKS, n)]))
     above = [i for i in range(n) if np.isfinite(x[i]) and x[i] > SEASON_LAI]
@@ -153,7 +172,13 @@ def export(area, year):
     for k in range(F):                                        # pixel window of each field: [row0, row1, col0, col1]
         p = np.flatnonzero(inv == k)
         bbox[k] = [int(rows[p].min()), int(rows[p].max()) + 1, int(cols[p].min()), int(cols[p].max()) + 1]
-    series = {"weeks": weeks, "fields": {}}
+    s2 = np.load(os.path.join(out_dir(area, year), "s2_pixels_fv2.npz"))
+    j = pd.Series(np.arange(len(s2["rows"])), index=pd.MultiIndex.from_arrays([s2["rows"], s2["cols"]])).reindex(key).values
+    has = np.isfinite(j)
+    clear = np.zeros((len(s2["dates"]), len(rows)), bool)
+    clear[:, has] = np.isfinite(s2["lai"][:, j[has].astype(int)])
+    clr, area_share = clear_dates(clear, share, inv, F)                 # dates each field was clear; clear share per date
+    series = {"weeks": weeks, "fields": {}, "rgb_share": [round(float(v), 3) for v in area_share]}
     med = {gr: np.nanmedian(np.where(group[None, :] == gr, fs["lai"], np.nan), axis=1) for gr in set(group)}
     for k, f in enumerate(fids):
         lai = fs["lai"][:, k]
@@ -163,7 +188,7 @@ def export(area, year):
         series["fields"][str(int(f))] = {"lai": _rnd(lai, 2), "ndvi": _rnd(fs["ndvi"][:, k], 3), "lai_unc": _rnd(fs["lai_unc"][:, k], 2),
                                          "ndvi_unc": _rnd(fs["ndvi_unc"][:, k], 3), "src": fs["lai_src"][:, k].tolist(),
                                          "ndvi_src": fs["ndvi_src"][:, k].tolist(), "season": season, "alert": alert,
-                                         "bb": bbox[k], "group": group[k]}
+                                         "bb": bbox[k], "group": group[k], "clr": clr[k]}
     json.dump(series, open(os.path.join(out, "series.json"), "w"), separators=(",", ":"))
     # pixel blocks: one gzip block per field (weeks x its pixels, uint8), index with byte offsets
     index, blobs, off = {}, [], 0

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc , leavesField, clearRgbDate, fieldUrl, noDataReason, zoomAllowed, areaToEnter, groupMedian, exportCheck } from "../../docs/js/field_core.js";
+import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc , leavesField, clearRgbDate, fieldUrl, noDataReason, zoomAllowed, areaToEnter, groupMedian, exportCheck, fieldRgbDate, areaRgbDate, legendSpec, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText } from "../../docs/js/field_core.js";
 
 const weeks = ["2024-05-20", "2024-05-27", "2024-06-03"];
 
@@ -95,4 +95,63 @@ test("exports are blocked for fields only partly inside the study area", () => {
   assert.deepEqual(exportCheck({ rates: [60, 50, 40], partial: false }), { ok: true, msg: "" });
   assert.equal(exportCheck({ rates: [60, 50, 40], partial: true }).ok, false);
   assert.equal(exportCheck({ rates: [60, "", 40], partial: false }).ok, false);
+});
+
+test("field panel image: nearest date this field itself was clear", () => {
+  const rgb = ["2022-06-11", "2022-06-21", "2022-07-01", "2022-07-06"];
+  assert.equal(fieldRgbDate(rgb, [0, 1], "2022-06-29"), "2022-06-21");   // 1 Jul is nearer but not clear over this field
+  assert.equal(fieldRgbDate(rgb, [], "2022-07-04"), null);
+});
+
+test("map true-colour layer: nearest date that was clear over most of the area", () => {
+  const rgb = ["2022-06-11", "2022-06-21", "2022-07-01"], share = [0.9, 0.2, 0.7];
+  assert.equal(areaRgbDate(rgb, share, "2022-06-20"), "2022-06-11");    // 21 June mostly cloudy
+  assert.equal(areaRgbDate(rgb, share, "2022-06-29"), "2022-07-01");
+  assert.equal(areaRgbDate(rgb, [0.1, 0.1, 0.1], "2022-06-20"), null);  // no clear image near this week
+});
+
+test("vs median only for groups with enough fields", () => {
+  const f = {}; for (let i = 0; i < 12; i++) f[i] = { group: "wheat", lai: [i] };
+  f.x = { group: "legume", lai: [3] }; f.y = { group: "legume", lai: [1] };
+  assert.equal(groupMedian(f, "wheat", 0, 10), 5.5);
+  assert.equal(groupMedian(f, "legume", 0, 10), null);
+});
+
+test("legend follows the field layer", () => {
+  assert.deepEqual(legendSpec("lai"), { kind: "ramp", scheme: "YlGn", min: 0, max: 5, unit: "green LAI (m²/m²)" });
+  assert.deepEqual(legendSpec("ndvi"), { kind: "ramp", scheme: "YlGn", min: 0, max: 1, unit: "NDVI" });
+  assert.equal(legendSpec("source").kind, "swatches");
+  assert.equal(legendSpec("rgb").kind, "text");
+});
+
+test("field image only within 10 days of the week", () => {
+  const rgb = ["2022-05-01", "2022-06-21"];
+  assert.equal(fieldRgbDate(rgb, [0, 1], "2022-06-27"), "2022-06-21");
+  assert.equal(fieldRgbDate(rgb, [0], "2022-06-27"), null);                 // 1 May is 57 days away: no image
+});
+
+test("weekly chart: dots coloured by source, gaps without broken paths, message when empty", () => {
+  const v = [null, 1.0, 1.5, null, 2.5], u = [null, 0.2, 0.4, null, 0.6], src = [0, 1, 2, 0, 3], season = [0, 1, 1, 1, 1];
+  const svg = seriesChart({ values: v, unc: u, src, season, week: 2, weeks: ["2022-04-04", "2022-04-11", "2022-04-18", "2022-04-25", "2022-05-02"], max: 4, label: "LAI" });
+  assert.equal((svg.match(/<circle/g) || []).length, 3);
+  assert.ok(svg.includes(SOURCE_COLOURS[1]) && svg.includes(SOURCE_COLOURS[2]) && svg.includes(SOURCE_COLOURS[3]));
+  assert.ok(!svg.includes("null") && !svg.includes("NaN"));
+  assert.match(seriesChart({ values: [null, null], unc: [null, null], src: [0, 0], season: [0, 0], week: 0, weeks: ["2022-04-04", "2022-04-11"], max: 1, label: "NDVI" }), /no value/i);
+});
+
+test("crop names in English with one colour per crop", () => {
+  assert.deepEqual(cropStyle("wheat", "Winterweichweizen"), { label: "Winter wheat", colour: "#d9a441" });
+  assert.equal(cropStyle("barley", "Wintergerste").label, "Winter barley");
+  assert.equal(cropStyle("barley", "Sommergerste").label, "Spring barley");
+  assert.equal(cropStyle("maize", "Silomais").label, "Silage maize");
+  assert.equal(cropStyle("maize", "Mais (ohne Silomais)").label, "Grain maize");
+  assert.equal(cropStyle("sugar beet", "Zuckerrüben").label, "Sugar beet");
+  assert.notEqual(cropStyle("wheat", "x").colour, cropStyle("barley", "x").colour);
+  assert.equal(cropStyle("something new", "Xyz").label, "Xyz");                 // unknown: keep the register name
+});
+
+test("vs median in percent only when the median is large enough", () => {
+  assert.equal(vsMedianText(3.8, 3.45, 0.6), "+10 % (within noise)");
+  assert.equal(vsMedianText(0.1, 0.33, 0.2), "−0.2 LAI (beyond noise)".replace("beyond", "beyond"));
+  assert.equal(vsMedianText(null, 2, 0.5), "–");
 });

@@ -1,11 +1,12 @@
 // Field level in the EXPLORER: zoom from districts to the NRW study areas, fields and 10 m pixels.
 // Uses the globals of the district app (S, META, GEO, d3, css, fmt, rowFor, cropData, drawMap, drawPanel, doyDate, LEADS).
 import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, clearRgbDate, fmtUnc, affineFromCorners, leavesField,
-         fieldUrl, noDataReason, zoomAllowed, areaToEnter } from "./field_core.js";
+         fieldUrl, noDataReason, zoomAllowed, areaToEnter, fieldRgbDate, areaRgbDate, legendSpec, groupMedian, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText } from "./field_core.js";
 
 const BASE = "field/";
 const ENTER_K = 40;                                   // zoom factor at which an area switches to fields
 const GROUP_CROP = { wheat: "winter_wheat", barley: "winter_barley", maize: "silage_maize", potato: "potato" };
+const ARABLE = new Set(["wheat", "barley", "other cereal", "rapeseed", "maize", "potato", "sugar beet"]);
 const CROP_GROUP = { winter_wheat: "wheat", winter_barley: "barley", silage_maize: "maize", grain_maize: "maize", potato: "potato" };
 export const FV = { v: null, idx: null, districts: {}, active: false, area: null, year: null, geo: null, series: null, rgb: [],
                     week: 0, layer: "lai", sel: null, cache: {} };
@@ -124,7 +125,7 @@ function label() {
   document.getElementById("leadval").textContent = `Week of ${d} · re-analysis (past season ${FV.year})`;
 }
 
-const SRC_COL = ["#555", "#4caf7d", "#7cc4ec", "#f2a93b", "#c07ad6"];
+const SRC_COL = SOURCE_COLOURS;
 function fieldFill(f) {
   const s = FV.series.fields[f.properties.id], w = FV.week;
   if (!s) return "none";
@@ -146,8 +147,10 @@ export function drawFields() {
   if (g.empty()) g = d3.select("#mapg").append("g").attr("id", "fieldg");
   const [ul, ur, ll] = FV.idx.areas[FV.area].corners_wgs84.map(c => p(c));
   const m = affineFromCorners(ul, ur, ll, 800, 800);
-  const pix = FV.layer === "lai" || FV.layer === "ndvi";
-  g.selectAll("image.ov").data(pix ? [url(`${k}/${FV.layer}/${wk}.png`)] : [])
+  const rgbD = FV.layer === "rgb" ? areaRgbDate(FV.rgb, FV.series.rgb_share, wk) : null;
+  const pix = FV.layer === "lai" || FV.layer === "ndvi" || FV.layer === "rgb";
+  const src = FV.layer === "rgb" ? (rgbD ? url(`${k}/rgb/${rgbD}.jpg`) : null) : url(`${k}/${FV.layer}/${wk}.png`);
+  g.selectAll("image.ov").data(pix && src ? [src] : [])
     .join("image").attr("class", "ov").attr("href", d => d).attr("width", 800).attr("height", 800)
     .attr("transform", `matrix(${m.join(",")})`).style("image-rendering", "pixelated");
   const path = d3.geoPath(p);
@@ -157,24 +160,26 @@ export function drawFields() {
     .on("click", (e, f) => { e.stopPropagation(); FV.sel = f.properties.id; drawFields(); fieldPanel(f.properties.id); })
     .selectAll("title").data(f => [f]).join("title")
     .text(f => { const s = FV.series.fields[f.properties.id]; return `Field ${f.properties.id} · ${f.properties.crop}` + (s ? ` · LAI ${fmtUnc(s.lai[FV.week], s.lai_unc[FV.week], 1)}` : ""); });
+  fieldLegend(rgbD);
 }
 
-function curve(s) {
-  if (!s.lai.some(v => v != null)) return `<p class="note">${noDataReason(s.src, 0) || "No value this season"}.</p>`;
-  const W = 460, H = 170, L = 34, R = 10, T = 10, B = 24, n = FV.series.weeks.length;
-  const x = d3.scaleLinear().domain([0, n - 1]).range([L, W - R]);
-  const y = d3.scaleLinear().domain([0, Math.max(4, d3.max(s.lai.map((v, i) => (v ?? 0) + (s.lai_unc[i] ?? 0))))]).nice().range([H - B, T]);
-  const pts = s.lai.map((v, i) => [i, v, s.lai_unc[i]]);
-  const area = d3.area().defined(p => p[1] != null).x(p => x(p[0])).y0(p => y(Math.max(0, p[1] - (p[2] ?? 0)))).y1(p => y(p[1] + (p[2] ?? 0)));
-  const line = d3.line().defined(p => p[1] != null).x(p => x(p[0])).y(p => y(p[1]));
-  const off = s.season.map((v, i) => (v ? "" : `<rect x="${x(i) - (W - L - R) / n / 2}" y="${T}" width="${(W - L - R) / n}" height="${H - B - T}" fill="${css("--line")}" fill-opacity=".35"/>`)).join("");
-  const months = FV.series.weeks.map((w, i) => [w, i]).filter(([w]) => w.slice(8, 10) <= "07" && ["11", "01", "03", "05", "07"].includes(w.slice(5, 7)))
-    .map(([w, i]) => `<text x="${x(i)}" y="${H - 6}" text-anchor="middle">${new Date(w + "T00:00:00Z").toLocaleDateString("en-GB", { month: "short", timeZone: "UTC" })}</text>`).join("");
-  const yt = y.ticks(4).map(t => `<line class="ax" x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}"/><text x="${L - 5}" y="${y(t) + 4}" text-anchor="end">${t}</text>`).join("");
-  const meas = pts.filter((p, i) => s.src[i] === 1 && p[1] != null).map(p => `<circle cx="${x(p[0])}" cy="${y(p[1])}" r="2.6" fill="${css("--ink")}"/>`).join("");
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly green LAI of this field">${off}${yt}${months}
-    <path d="${area(pts)}" fill="${css("--accent")}" fill-opacity=".18"/><path d="${line(pts)}" fill="none" stroke="${css("--accent")}" stroke-width="2"/>
-    ${meas}<line x1="${x(FV.week)}" x2="${x(FV.week)}" y1="${T}" y2="${H - B}" stroke="${css("--muted")}" stroke-dasharray="3 3"/></svg>`;
+// colour bar and note under the map follow the field layer (the district t/ha scale is not shown in the field view)
+function fieldLegend(rgbD) {
+  const L = legendSpec(FV.layer), wk = FV.series.weeks[FV.week];
+  let h = "";
+  if (L.kind === "ramp") {
+    const ip = { YlGn: d3.interpolateYlGn, Purples: d3.interpolatePurples, RdBu: d3.interpolateRdBu }[L.scheme];
+    const stops = d3.range(0, 1.01, 0.1).map(t => ip(L.scheme === "RdBu" ? t : 0.05 + 0.95 * t));
+    h = `<span>${L.min}</span><span class="bar" style="background:linear-gradient(90deg,${stops.join(",")})"></span><span>${L.max} ${L.unit}</span>`;
+  } else if (L.kind === "swatches") {
+    const col = FV.layer === "alert" ? ["#e0562a"] : SRC_COL;
+    h = L.items.map((t, i) => `<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${col[i]}"></span> ${t}</span>`).join(" ");
+  } else {
+    h = rgbD ? `<span>Sentinel-2 true colour, ${rgbD} (nearest date clear over most of the area)</span>` : "<span>No clear Sentinel-2 image of this area within 3 weeks of this week.</span>";
+  }
+  document.getElementById("legend").innerHTML = h;
+  document.getElementById("mapnote").textContent = `Field level, study area ${FV.area}, week of ${wk}: weekly values per 10 m pixel (re-analysis of a past season). `
+    + "Dark grey: not a registered field or no value yet. Click a field for its curve, uncertainty and Sentinel-2 image.";
 }
 
 export function attribution() {
@@ -193,16 +198,16 @@ async function districtContext(f) {
 }
 
 function rgbCanvas(s) {
-  const d = clearRgbDate(FV.series.weeks, s.src, FV.rgb, FV.week);
-  if (!d) return `<p class="note">No clear Sentinel-2 image of this field in this season.</p>`;
+  const d = fieldRgbDate(FV.rgb, s.clr, FV.series.weeks[FV.week]);
+  if (!d) return "";                                         // no image unless >= 95 % of the field was clear within 10 days
   return `<canvas id="fv-rgb" width="320" height="240" style="width:100%;max-width:320px;border-radius:6px"></canvas>
-    <p class="note">Sentinel-2 true colour, ${d} (nearest date this field was clear)</p>`;
+    <p class="note">Sentinel-2 true colour, ${d} (≥ 95 % of the field clear)</p>`;
 }
 
 function paintRgb(s) {
   const c = document.getElementById("fv-rgb");
   if (!c) return;
-  const d = clearRgbDate(FV.series.weeks, s.src, FV.rgb, FV.week), [r0, r1, c0, c1] = s.bb, pad = 6;
+  const d = fieldRgbDate(FV.rgb, s.clr, FV.series.weeks[FV.week]), [r0, r1, c0, c1] = s.bb, pad = 6;
   const img = new Image();
   img.onload = () => {
     const sx = Math.max(0, c0 - pad), sy = Math.max(0, r0 - pad), sw = Math.min(800, c1 + pad) - sx, sh = Math.min(800, r1 + pad) - sy;
@@ -221,23 +226,25 @@ export async function fieldPanel(id) {
   const f = FV.geo.features.find(x => x.properties.id === id), s = FV.series.fields[id], w = FV.week;
   if (!f || !s) return;
   const wk = FV.series.weeks[w], P = f.properties;
-  const same = Object.values(FV.series.fields).filter(x => x.group === s.group && x.lai[w] != null).map(x => x.lai[w]).sort(d3.ascending);
-  const med = same.length ? d3.quantile(same, 0.5) : null, diff = s.lai[w] != null && med != null ? s.lai[w] - med : null;
-  const vsMed = diff == null ? "–" : `${diff > 0 ? "+" : ""}${fmt(100 * diff / med, 0)} %`;
-  let h = `<h2>Field ${id} · ${P.crop}</h2>
-    <div class="note">${P.group} · ${fmt(P.ha, 2)} ha · season ${FV.year} · week of ${wk} · re-analysis (past season)</div>
+  const med = ARABLE.has(s.group) ? groupMedian(FV.series.fields, s.group, w, 10) : null;   // mixed groups have no meaningful median
+  const diff = s.lai[w] != null && med != null ? s.lai[w] - med : null;
+  const vsMed = vsMedianText(s.lai[w], med, s.lai_unc[w]).replace(/ \(.*\)$/, "");
+  const cs = cropStyle(P.group, P.crop);
+  let h = `<h2><span class="crop" style="--c:${cs.colour}"><i></i>${cs.label}</span> Field ${id}</h2>
+    <div class="note">${P.crop} (NRW register) · ${fmt(P.ha, 2)} ha · season ${FV.year} · week of ${wk} · re-analysis (past season)</div>
     ${P.partial ? '<p><span class="pill bad">only partly inside the study area: values cover the inside part</span></p>' : ""}
     ${s.season[w] ? "" : '<p><span class="pill">before sowing / after harvest: previous crop, cover crop or bare soil</span></p>'}
     ${noDataReason(s.src, w) ? `<p class="note">No value this week: ${noDataReason(s.src, w)}.</p>` : ""}
     <div class="kpis">
       <div class="kpi"><div class="k">Green LAI</div><div class="v">${fmtUnc(s.lai[w], s.lai_unc[w], 1)}</div><div class="s">m²/m² · typical error of a 10 m value</div></div>
       <div class="kpi"><div class="k">NDVI</div><div class="v">${fmtUnc(s.ndvi[w], s.ndvi_unc[w], 2)}</div><div class="s">${s.ndvi_src[w] === 1 ? "± assumed sensor noise" : "± typical error"}</div></div>
-      <div class="kpi"><div class="k">vs median ${s.group}</div><div class="v">${vsMed}</div><div class="s">${diff == null ? "" : withinNoise(diff, s.lai_unc[w] ?? 0) ? "within noise" : "beyond the uncertainty"}</div></div>
+      <div class="kpi"><div class="k">vs median ${s.group}</div><div class="v">${vsMed}</div><div class="s">${diff == null ? (ARABLE.has(s.group) ? "too few fields" : "not compared (mixed group)") : withinNoise(diff, s.lai_unc[w] ?? 0) ? "within noise" : "beyond the uncertainty"}</div></div>
     </div>
     <p><span class="pill">${sourceLabel(s.src[w])}</span> ${s.alert[w] === 1 ? '<span class="pill bad">below the median field for 2 weeks</span>' : s.alert[w] === 2 ? '<span class="pill bad">falling while the median rises</span>' : ""}</p>
-    <h3>Weekly green LAI</h3>${curve(s)}
-    <p class="note">Band: ± typical error. Dots: clear Sentinel-2 images. Grey weeks: before sowing / after harvest. Dashed: selected week.</p>
-    <h3>Sentinel-2 image</h3>${rgbCanvas(s)}`;
+    <h3>Weekly green LAI</h3>${seriesChart({ values: s.lai, unc: s.lai_unc, src: s.src, season: s.season, week: w, weeks: FV.series.weeks, max: 6, label: "green LAI" })}
+    <h3>Weekly NDVI</h3>${seriesChart({ values: s.ndvi, unc: s.ndvi_unc, src: s.ndvi_src, season: s.season, week: w, weeks: FV.series.weeks, max: 1, label: "NDVI" })}
+    <p class="note">${SOURCE_COLOURS.map((c, i) => i ? `<span style="margin-right:10px;white-space:nowrap"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c}"></span> ${sourceLabel(i)}</span>` : "").join("")}<br>Band: ± typical error. Shaded weeks: before sowing / after harvest. Dashed: selected week.</p>
+    ${rgbCanvas(s) ? `<h3>Sentinel-2 image</h3>${rgbCanvas(s)}` : ""}`;
   h += await districtContext(f);
   h += `<p class="note"><b>Field yield: not shown yet</b> (needs field yield data).</p>
     <p><button id="fv-add">Add to my fields</button> <button id="fv-back">Back to districts</button></p>${attribution()}`;

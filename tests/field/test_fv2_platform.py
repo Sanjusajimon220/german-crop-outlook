@@ -83,3 +83,31 @@ def test_index_carries_a_data_version(tmp_path, monkeypatch):
     X.write_index()
     v = json.load(open(tmp_path / "index.json"))["version"]
     assert isinstance(v, str) and len(v) >= 8
+
+
+def test_field_clear_dates_need_half_the_field_clear():
+    # owner check 20 Oct: the field panel showed a black image; a date counts for a field only if >= 50 % of it was clear
+    clear = np.array([[True, True, False, False],     # date 0: field 0 fully clear, field 1 not
+                      [True, False, True, True],      # date 1: field 0 half (by weight 1 of 2), field 1 clear
+                      [False, False, True, False]])   # date 2: field 1 half
+    w = np.array([1.0, 1.0, 1.0, 1.0])
+    inv = np.array([0, 0, 1, 1])
+    clr, area = X.clear_dates(clear, w, inv, n_fields=2, min_share=0.5)
+    assert clr == [[0, 1], [1, 2]]
+    assert np.allclose(area, [0.5, 0.75, 0.25])
+
+
+def test_field_image_needs_95_percent_clear_by_default():
+    clear = np.array([[True] * 19 + [False], [True] * 20])        # 95 % then 100 % of one field
+    clr, _ = X.clear_dates(clear, np.ones(20), np.zeros(20, int), n_fields=1)
+    assert clr == [[0, 1]]
+    clear = np.array([[True] * 18 + [False] * 2])                  # 90 %: not clean enough
+    assert X.clear_dates(clear, np.ones(20), np.zeros(20, int), n_fields=1)[0] == [[]]
+
+
+def test_off_season_spring_cover_crop_greening_in_spring_is_not_the_crop():
+    # owner check 20 Oct (north 2025 maize): grass / cover crop greens up again in March-April, is cut in May, maize from June
+    lai = [1.0] * 21 + [1.5, 2.5, 3.5, 4.5, 5.0, 4.0, 1.0, 0.2, 0.1, 0.1, 0.3, 0.8, 1.5, 2.5, 3.0, 3.2, 3.0, 2.8] + [2.5] * 9
+    m = X.season_mask(lai, "maize")
+    assert m[24] == 0                              # April green-up is the cover crop
+    assert m[35] == 1                              # maize in July
