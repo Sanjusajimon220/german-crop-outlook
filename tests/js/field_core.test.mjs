@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc , leavesField, clearRgbDate, fieldUrl, noDataReason, zoomAllowed, areaToEnter, groupMedian, exportCheck, fieldRgbDate, areaRgbDate, legendSpec, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText } from "../../docs/js/field_core.js";
+import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc , leavesField, clearRgbDate, fieldUrl, noDataReason, zoomAllowed, areaToEnter, groupMedian, exportCheck, fieldRgbDate, areaRgbDate, legendSpec, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary, cropMedians } from "../../docs/js/field_core.js";
 
 const weeks = ["2024-05-20", "2024-05-27", "2024-06-03"];
 
@@ -154,4 +154,28 @@ test("vs median in percent only when the median is large enough", () => {
   assert.equal(vsMedianText(3.8, 3.45, 0.6), "+10 % (within noise)");
   assert.equal(vsMedianText(0.1, 0.33, 0.2), "−0.2 LAI (beyond noise)".replace("beyond", "beyond"));
   assert.equal(vsMedianText(null, 2, 0.5), "–");
+});
+
+test("crop summary of a study area: one entry per crop label, largest area first", () => {
+  const props = [
+    { id: 1, group: "wheat", crop: "Winterweichweizen", ha: 5 }, { id: 2, group: "wheat", crop: "Winterweichweizen", ha: 3 },
+    { id: 3, group: "maize", crop: "Silomais", ha: 4 }, { id: 4, group: "maize", crop: "Mais (ohne Silomais)", ha: 1 },
+  ];
+  const s = cropSummary(props);
+  assert.deepEqual(s.map(x => [x.label, x.n, x.ha]), [["Winter wheat", 2, 8], ["Silage maize", 1, 4], ["Grain maize", 1, 1]]);
+  assert.ok(s[0].colour.startsWith("#"));
+});
+
+test("median curve per crop for the area chart (crops with too few fields left out)", () => {
+  const props = [1, 2, 3].map(id => ({ id, group: "wheat", crop: "Winterweichweizen" })).concat([{ id: 9, group: "potato", crop: "Kartoffeln" }]);
+  const fields = { 1: { lai: [1, 2] }, 2: { lai: [3, null] }, 3: { lai: [2, 4] }, 9: { lai: [5, 5] } };
+  const m = cropMedians(props, fields, 3);
+  assert.deepEqual(m["Winter wheat"], [2, 3]);
+  assert.equal(m["Potato"], undefined);
+});
+
+test("common special crops get English names too", () => {
+  assert.equal(cropStyle("other", "Gartenkürbis").label, "Pumpkin");
+  assert.equal(cropStyle("other", "Möhre (auch Futtermöhre)").label, "Carrot");
+  assert.equal(cropStyle("other cereal", "Winterhafer").label, "Winter oats");
 });

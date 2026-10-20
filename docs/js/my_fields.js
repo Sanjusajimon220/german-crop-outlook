@@ -1,7 +1,7 @@
 // MY FIELDS: fields picked on the map (kept in this browser, no accounts), list + map, zones, rates, exports.
 import { loadMyFields, saveMyFields, zones, fmtUnc, sourceLabel, withinNoise, nearestRgbDate, clearRgbDate,
          affineFromCorners, invertAffine, applyAffine, groupMedian, exportCheck, noDataReason, fieldRgbDate,
-         seriesChart, SOURCE_COLOURS, legendSpec, cropStyle, vsMedianText } from "./field_core.js";
+         seriesChart, SOURCE_COLOURS, legendSpec, cropStyle, vsMedianText, cropSummary, cropMedians } from "./field_core.js";
 const badge = (g, c) => { const k = cropStyle(g, c); return `<span class="crop" style="--c:${k.colour}"><i></i>${k.label}</span>`; };
 
 import { buildTaskData } from "./isoxml.js";
@@ -123,7 +123,6 @@ async function openField(f) {
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
       <div><canvas id="mf-map" width="300" height="300" style="width:100%;max-width:300px;background:var(--bg);border-radius:8px;border:2px solid ${cs.colour}"></canvas>
         <div class="legend" id="mf-legend"></div><div class="note" id="mf-map-cap"></div></div>
-      <div id="mf-rgb-box"><canvas id="mf-rgb" width="300" height="300" style="width:100%;max-width:300px;border-radius:8px"></canvas><div class="note" id="mf-rgb-cap"></div></div>
     </div>
     <div id="mf-kpi" class="kpis" style="margin-top:10px"></div>
     <h3>Weekly green LAI</h3><div id="mf-lai-chart"></div>
@@ -135,7 +134,9 @@ async function openField(f) {
     <p>${["weak", "mid", "strong"].map((n, i) => `<label style="margin-right:10px"><span style="display:inline-block;width:10px;height:10px;background:${ZCOL[i]};border-radius:2px"></span> ${n} <input type="number" min="0" max="400" step="1" style="width:70px" data-z="${i}" value="${rates[i]}"> kg/ha</label>`).join("")}</p>
     <p><button id="mf-iso" class="pill">Export ISO-XML</button> <button id="mf-gis">Export GIS (GeoJSON)</button> <button id="mf-print">Print report</button></p>
     <p class="note" id="mf-msg"></p>` : `<p class="note">Zones and exports are offered for arable crops only (this field: ${s.group}).</p>`}
+    <p>${ST.fields.some(x => key(x) === key(f)) ? '<span class="note">Saved in your fields ✓</span>' : '<button id="mf-save">Save to my fields</button>'}</p>
     ${attribution()}`;
+  const sv = document.getElementById("mf-save"); if (sv) sv.onclick = () => add({ area: f.area, year: f.year, id: f.id });
   det.querySelectorAll("button[data-layer]").forEach(b => b.onclick = () => {
     CUR.layer = b.dataset.layer; det.querySelectorAll("button[data-layer]").forEach(x => x.classList.toggle("on", x === b)); paint();
   });
@@ -224,26 +225,7 @@ async function paint() {
     <div class="kpi"><div class="k">Season</div><div class="v">${s.season[w] ? "in season" : "off-season"}</div><div class="s">${s.season[w] ? "the registered crop" : "previous crop / cover crop / bare soil"}</div></div>`;
   document.getElementById("mf-lai-chart").innerHTML = seriesChart({ values: s.lai, unc: s.lai_unc, src: s.src, season: s.season, week: w, weeks: CUR.weeks, max: 6, label: "green LAI" });
   document.getElementById("mf-ndvi-chart").innerHTML = seriesChart({ values: s.ndvi, unc: s.ndvi_unc, src: s.ndvi_src, season: s.season, week: w, weeks: CUR.weeks, max: 1, label: "NDVI" });
-  // Sentinel-2 true colour only when >= 95 % of this field was clear within 10 days of the week; otherwise not shown
-  const box = document.getElementById("mf-rgb-box"), d = fieldRgbDate(CUR.rgb, s.clr, wk);
-  box.hidden = !d;
-  if (!d) return;
-  const img = new Image(), c = document.getElementById("mf-rgb"), { r, c: cc } = pb.e;
-  img.onload = () => {
-    const r0 = Math.min(...r), c0 = Math.min(...cc), h = Math.max(...r) - r0 + 1, ww = Math.max(...cc) - c0 + 1, pad = 3;
-    const sx = Math.max(0, c0 - pad), sy = Math.max(0, r0 - pad), sw = Math.min(800 - sx, ww + 2 * pad), sh = Math.min(800 - sy, h + 2 * pad);
-    const sc = Math.min(c.width / sw, c.height / sh), ox = (c.width - sw * sc) / 2, oy = (c.height - sh * sc) / 2, ctx = c.getContext("2d");
-    ctx.imageSmoothingEnabled = false; ctx.clearRect(0, 0, c.width, c.height);
-    ctx.drawImage(img, sx, sy, sw, sh, ox, oy, sw * sc, sh * sc);
-    const inF = new Set(r.map((rr, i) => rr * 1000 + cc[i]));               // mark the field edge with small dots
-    ctx.fillStyle = "rgba(242,169,59,.95)";
-    for (let i = 0; i < r.length; i++) {
-      const edge = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([a, b]) => !inF.has((r[i] + a) * 1000 + cc[i] + b));
-      if (edge) ctx.fillRect(ox + (cc[i] - sx) * sc + sc * 0.35, oy + (r[i] - sy) * sc + sc * 0.35, sc * 0.3, sc * 0.3);
-    }
-  };
-  img.src = url(`${CUR.area}_${CUR.year}/rgb/${d}.jpg`);
-  document.getElementById("mf-rgb-cap").textContent = `Sentinel-2 true colour, ${d} (≥ 95 % of the field clear)`;
+  if (document.getElementById("mf-areamap")) drawAreaMap(cropSummary(AV.geo ? AV.geo.features.map(f => f.properties) : []));   // highlight the open field
 }
 
 function lonLatGrid() {
@@ -296,4 +278,84 @@ function download(blob, name) {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
-window.MYFIELDS = { add, render };
+// ---- study areas: every registered field of an area, coloured by crop, with crop filter and per-crop curves ----
+const AREA_NAMES = { pilot: "Pilot · Düren", selhausen: "Selhausen", north: "North", south: "South" };
+const AV = { area: "pilot", year: 2025, crop: null, geo: null, series: null };
+
+export async function renderAreas() {
+  const box = document.getElementById("mf-areas");
+  if (!box || !FV.idx) return;
+  const years = FV.idx.areas[AV.area].seasons;
+  if (!years.includes(AV.year)) AV.year = years[years.length - 1];
+  let d;
+  try { d = await loadSeason(AV.area, AV.year); } catch (e) { box.innerHTML = `<p class="note">Field data for ${AV.area} ${AV.year} are not available.</p>`; return; }
+  AV.geo = d.geo; AV.series = d.series;
+  const props = d.geo.features.map(f => f.properties).filter(p => d.series.fields[p.id]);
+  const all = cropSummary(props), total = all.reduce((a, c) => a + c.ha, 0);
+  // main crops (>= 1 % of the area, at most 12) get their own chip; the long tail is grouped as "Other crops"
+  const main = all.filter((c, i) => i < 12 && c.ha >= 0.01 * total), rest = all.filter(c => !main.includes(c));
+  AV.other = new Set(rest.map(c => c.label));
+  const crops = main.concat(rest.length ? [{ label: "Other crops", colour: "#7b8496", n: rest.reduce((a, c) => a + c.n, 0), ha: rest.reduce((a, c) => a + c.ha, 0) }] : []);
+  box.innerHTML = `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <span class="seg">${Object.keys(FV.idx.areas).map(a => `<button data-area="${a}" class="${a === AV.area ? "on" : ""}">${AREA_NAMES[a] || a}</button>`).join("")}</span>
+      <label class="note">Season <select id="mf-year">${years.map(y => `<option ${y === AV.year ? "selected" : ""}>${y}</option>`).join("")}</select></label>
+    </div>
+    <p class="note" style="margin:8px 0">${props.length} registered fields · ${Math.round(total)} ha · click a crop to show only its fields, click a field to open it</p>
+    <div class="crops">${[{ label: "All crops", colour: "#8b96b4", n: props.length, ha: total }].concat(crops).map(c =>
+      `<button class="crop chip ${(AV.crop || "All crops") === c.label ? "on" : ""}" data-crop="${c.label}" style="--c:${c.colour}"><i></i>${c.label} <span class="note">${c.n} · ${Math.round(c.ha)} ha</span></button>`).join("")}</div>
+    <svg id="mf-areamap" viewBox="0 0 520 520" role="img" aria-label="Fields of the study area coloured by crop" style="width:100%;max-width:560px;display:block;margin-top:8px;background:var(--bg);border-radius:8px"></svg>
+    <h3>Median green LAI per crop</h3><div id="mf-areachart"></div>`;
+  box.querySelectorAll("button[data-area]").forEach(b => b.onclick = () => { AV.area = b.dataset.area; AV.crop = null; renderAreas(); });
+  document.getElementById("mf-year").onchange = e => { AV.year = +e.target.value; renderAreas(); };
+  box.querySelectorAll("button[data-crop]").forEach(b => b.onclick = () => { AV.crop = b.dataset.crop === "All crops" ? null : b.dataset.crop; renderAreas(); });
+  drawAreaMap(all);
+  drawAreaChart(props, all);
+}
+
+function chipMatch(label) {
+  return !AV.crop || AV.crop === label || (AV.crop === "Other crops" && AV.other && AV.other.has(label));
+}
+
+function drawAreaMap(crops) {
+  const svg = d3.select("#mf-areamap"), proj = d3.geoMercator().fitSize([520, 520], AV.geo), path = d3.geoPath(proj);
+  const col = Object.fromEntries(crops.map(c => [c.label, c.colour]));
+  const tip = document.getElementById("mf-tip");
+  svg.selectAll("path").data(AV.geo.features.filter(f => AV.series.fields[f.properties.id]), f => f.properties.id).join("path")
+    .attr("d", path)
+    .attr("fill", f => col[cropStyle(f.properties.group, f.properties.crop).label] || "#555")
+    .attr("fill-opacity", f => (chipMatch(cropStyle(f.properties.group, f.properties.crop).label) ? 0.95 : 0.12))
+    .attr("stroke", f => (CUR && CUR.area === AV.area && CUR.year === AV.year && CUR.id === f.properties.id ? "#fff" : "#0b1020"))
+    .attr("stroke-width", f => (CUR && CUR.id === f.properties.id ? 2 : 0.4))
+    .style("cursor", "pointer")
+    .on("mousemove", (e, f) => {
+      const P = f.properties, s = AV.series.fields[P.id], w = Math.max(0, AV.series.weeks.findIndex(x => x >= `${AV.year}-05-20`));
+      tip.style.display = "block";
+      const b = document.getElementById("mf-areas").getBoundingClientRect();
+      tip.style.left = (e.clientX - b.left + 14) + "px"; tip.style.top = (e.clientY - b.top + 14) + "px";
+      tip.innerHTML = `<b>${cropStyle(P.group, P.crop).label}</b> · field ${P.id}<br>${P.ha} ha${P.partial ? " · partly outside the area" : ""}<br>green LAI ${s.lai[w] == null ? "–" : fmtUnc(s.lai[w], s.lai_unc[w], 1)} (week of ${AV.series.weeks[w]})`;
+    })
+    .on("mouseleave", () => { tip.style.display = "none"; })
+    .on("click", (e, f) => { tip.style.display = "none"; openField({ area: AV.area, year: AV.year, id: f.properties.id }).catch(() => {}); });
+}
+
+function drawAreaChart(props, crops) {
+  const med = cropMedians(props, AV.series.fields, 10), weeks = AV.series.weeks, n = weeks.length;
+  const W = 520, H = 190, L = 30, R = 8, T = 8, B = 22, x = i => L + (i * (W - L - R)) / (n - 1), y = v => H - B - (Math.min(6, v) / 6) * (H - B - T);
+  const col = Object.fromEntries(crops.map(c => [c.label, c.colour]));
+  const lines = Object.entries(med).map(([k, v]) => {
+    const on = chipMatch(k);
+    let d = "", pen = false;
+    v.forEach((val, i) => { if (val == null) { pen = false; return; } d += `${pen ? "L" : "M"}${x(i).toFixed(1)},${y(val).toFixed(1)}`; pen = true; });
+    return `<path d="${d}" fill="none" stroke="${col[k]}" stroke-width="${on ? 2.2 : 1}" stroke-opacity="${on ? 1 : 0.25}"><title>${k}</title></path>`;
+  }).join("");
+  const months = weeks.map((w, i) => [w, i]).filter(([w]) => +w.slice(8, 10) <= 7 && ["11", "01", "03", "05", "07"].includes(w.slice(5, 7)))
+    .map(([w, i]) => `<text x="${x(i)}" y="${H - 5}" text-anchor="middle">${["", "Jan", "", "Mar", "", "May", "", "Jul", "", "", "", "Nov"][+w.slice(5, 7)]}</text>`).join("");
+  const ticks = [0, 2, 4, 6].map(t => `<line x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}" stroke="#8b96b4" stroke-opacity=".2"/><text x="${L - 4}" y="${y(t) + 4}" text-anchor="end">${t}</text>`).join("");
+  document.getElementById("mf-areachart").innerHTML = Object.keys(med).length
+    ? `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Median green LAI per crop through the season">${ticks}${months}${lines}</svg>
+       <p class="note">Median of all fields of each crop with at least 10 fields; values are weekly green LAI (m²/m²).</p>`
+    : `<p class="note">No crop has at least 10 fields with values in this season.</p>`;
+}
+
+window.MYFIELDS = { add, render, renderAreas };

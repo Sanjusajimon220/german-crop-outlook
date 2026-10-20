@@ -70,6 +70,7 @@ th{font:600 11px var(--f-body);letter-spacing:.06em;text-transform:uppercase;col
 section[hidden],.ctl[hidden]{display:none}
 #map path.f,#map path.area{vector-effect:non-scaling-stroke}
 .crop{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:999px;background:color-mix(in srgb,var(--c) 18%,transparent);color:var(--ink);font-size:.85em;font-weight:500;white-space:nowrap;vertical-align:middle}.crop i{width:9px;height:9px;border-radius:50%;background:var(--c)}
+.crops{display:flex;flex-wrap:wrap;gap:6px}.crop.chip{border:1px solid transparent;cursor:pointer;font:inherit;font-size:.85em}.crop.chip.on{border-color:var(--c)}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}.seg button{border:0;border-radius:0;background:transparent;color:var(--muted);padding:4px 10px;cursor:pointer}.seg button.on{background:var(--accent);color:#111}
 #mapg.fieldmode path.d{fill:#232a3a;stroke:#2f384c}
 #map path.area{fill:var(--accent);fill-opacity:.12;stroke:var(--accent);stroke-opacity:.7;stroke-width:6;vector-effect:non-scaling-stroke;cursor:zoom-in}
@@ -113,6 +114,7 @@ section[hidden],.ctl[hidden]{display:none}
       <option value="lai">Green LAI, 10 m</option>
       <option value="ndvi">NDVI, 10 m</option>
       <option value="rgb">Sentinel-2 true colour</option>
+      <option value="crop">Crop type</option>
       <option value="change">Change since last week</option>
       <option value="source">Data source</option>
       <option value="unc">Uncertainty</option>
@@ -132,7 +134,8 @@ section[hidden],.ctl[hidden]{display:none}
 
 <section id="page-myfields" hidden>
   <div class="grid" style="padding-block:14px">
-    <div class="card"><h2>My fields</h2><div id="mf-list"></div></div>
+    <div class="card" style="position:relative"><h2>Study areas</h2><div id="mf-areas"></div><div class="tip" id="mf-tip"></div>
+      <h2 style="margin-top:18px">My saved fields</h2><div id="mf-list"></div></div>
     <div class="card" id="mf-detail" aria-live="polite"></div>
   </div>
 </section>
@@ -339,7 +342,7 @@ function accuracyTables() {
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
   document.querySelectorAll("nav button").forEach(x => x.setAttribute("aria-selected", x === b));
   ["explore", "myfields", "accuracy", "method"].forEach(p => document.getElementById("page-" + p).hidden = p !== b.dataset.page);
-  if (b.dataset.page === "myfields" && window.MYFIELDS) window.MYFIELDS.render();
+  if (b.dataset.page === "myfields" && window.MYFIELDS) { window.MYFIELDS.renderAreas(); window.MYFIELDS.render(); }
 });
 (async () => {
   [META, GEO, ACC] = await Promise.all([getJSON("meta.json"), getJSON("districts.geojson"), getJSON("accuracy.json")]);

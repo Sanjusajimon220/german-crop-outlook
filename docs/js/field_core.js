@@ -127,7 +127,16 @@ export function fieldRgbDate(rgb, clr, week, maxDays = 10) {
 // crop label in English and one colour per crop (farm-software conventions); group from the NRW register mapping
 const CROP_COLOUR = { wheat: "#d9a441", barley: "#e8c872", "other cereal": "#c9a96e", maize: "#9bc53d", "sugar beet": "#a05ea8",
                       potato: "#a47148", rapeseed: "#f2d40c", "grass / fodder": "#4f9a5b", legume: "#6fb3a8", fallow: "#8d8a7a", other: "#7b8496" };
+const SPECIAL = [[/^Gartenk(ü|u)rbis/i, "Pumpkin"], [/^M(ö|o)hre/i, "Carrot"], [/^Zwiebel/i, "Onion / leek"], [/^Erdbeere/i, "Strawberry"],
+  [/^Spargel/i, "Asparagus"], [/^Winterhafer/i, "Winter oats"], [/^Sommerhafer/i, "Spring oats"], [/^Winterroggen/i, "Winter rye"],
+  [/^Sommerroggen/i, "Spring rye"], [/^Wintertriticale/i, "Winter triticale"], [/^Sommertriticale/i, "Spring triticale"],
+  [/^Gurke/i, "Cucumber"], [/^Zichorie/i, "Chicory"], [/^Ackerbohne/i, "Field bean"], [/^Gem(ü|u)seerbse/i, "Vegetable pea"],
+  [/^Luzerne/i, "Lucerne"], [/^Kleegras/i, "Clover-grass"], [/^Baumschule/i, "Tree nursery"], [/^Chinaschilf|Miscanthus/i, "Miscanthus"]];
+
 export function cropStyle(group, crop) {
+  const sp = SPECIAL.find(([re]) => re.test(String(crop || "")));
+  if (sp && !["wheat", "barley", "maize", "sugar beet", "potato", "rapeseed"].includes(group))
+    return { label: sp[1], colour: CROP_COLOUR[group] || CROP_COLOUR.other };
   const c = String(crop || ""), season = /^Winter/i.test(c) ? "Winter " : /^Sommer/i.test(c) ? "Spring " : "";
   const label = group === "wheat" ? `${season || "Winter "}wheat`
     : group === "barley" ? `${season || "Winter "}barley`
@@ -135,6 +144,33 @@ export function cropStyle(group, crop) {
     : group === "sugar beet" ? "Sugar beet" : group === "potato" ? "Potato" : group === "rapeseed" ? `${season || "Winter "}rapeseed`
     : group === "grass / fodder" ? "Grassland / fodder" : group === "legume" ? "Legume" : group === "fallow" ? "Fallow" : c || group;
   return { label: label.charAt(0).toUpperCase() + label.slice(1), colour: CROP_COLOUR[group] || CROP_COLOUR.other };
+}
+
+// crops of a study area: [{label, colour, group, n, ha, ids}], largest area first (props = fields.geojson properties)
+export function cropSummary(props) {
+  const by = {};
+  for (const p of props) {
+    const k = cropStyle(p.group, p.crop), e = by[k.label] ||= { label: k.label, colour: k.colour, group: p.group, n: 0, ha: 0, ids: [] };
+    e.n++; e.ha += +p.ha || 0; e.ids.push(p.id);
+  }
+  return Object.values(by).map(e => ({ ...e, ha: Math.round(e.ha * 10) / 10 })).sort((a, b) => b.ha - a.ha || a.label.localeCompare(b.label));
+}
+
+// weekly median green LAI per crop label (crops with fewer than minN fields left out) for the area chart
+export function cropMedians(props, fields, minN = 10) {
+  const out = {};
+  for (const e of cropSummary(props)) {
+    if (e.n < minN) continue;
+    const series = e.ids.map(id => fields[id]?.lai).filter(Boolean);
+    if (series.length < minN) continue;
+    out[e.label] = series[0].map((_, w) => {
+      const v = series.map(s => s[w]).filter(x => x != null).sort((a, b) => a - b);
+      if (!v.length) return null;
+      const m = Math.floor(v.length / 2);
+      return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+    });
+  }
+  return out;
 }
 
 // colours of the value sources (measured, straight line, radar, after the last clear image); index 0 = no value

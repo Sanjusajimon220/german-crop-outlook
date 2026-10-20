@@ -1,7 +1,7 @@
 // Field level in the EXPLORER: zoom from districts to the NRW study areas, fields and 10 m pixels.
 // Uses the globals of the district app (S, META, GEO, d3, css, fmt, rowFor, cropData, drawMap, drawPanel, doyDate, LEADS).
 import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, clearRgbDate, fmtUnc, affineFromCorners, leavesField,
-         fieldUrl, noDataReason, zoomAllowed, areaToEnter, fieldRgbDate, areaRgbDate, legendSpec, groupMedian, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText } from "./field_core.js";
+         fieldUrl, noDataReason, zoomAllowed, areaToEnter, fieldRgbDate, areaRgbDate, legendSpec, groupMedian, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary } from "./field_core.js";
 
 const BASE = "field/";
 const ENTER_K = 40;                                   // zoom factor at which an area switches to fields
@@ -103,8 +103,32 @@ export async function enterField(area) {
   document.getElementById("panel").innerHTML = `<h2>Study area ${area} · season ${FV.year}</h2>
     <p class="note">${Object.keys(FV.series.fields).length} registered fields. Click a field for its weekly green LAI, NDVI and Sentinel-2 image.
     ${FV.year !== +S.year ? `Field data exist for 2021-2025; showing ${FV.year}.` : ""}</p>
+    <p><label class="note">Find a field <input id="fv-find" type="search" inputmode="numeric" placeholder="field ID, e.g. ${Object.keys(FV.series.fields)[0]}" style="width:170px"></label> <span class="note" id="fv-find-msg"></span></p>
     <p><button id="fv-back">Back to districts</button></p>${attribution()}`;
   document.getElementById("fv-back").onclick = leaveField;
+  document.getElementById("fv-find").onkeydown = e => { if (e.key === "Enter") findField(e.target.value.trim()); };
+}
+
+// hover pop-up on a field: crop, size, this week's LAI with its uncertainty and source
+function fieldTip(e, f) {
+  const t = document.getElementById("tip"), P = f.properties, s = FV.series.fields[P.id], w = FV.week;
+  if (!t) return;
+  const b = document.querySelector(".mapbox").getBoundingClientRect();
+  t.style.display = "block"; t.style.left = (e.clientX - b.left + 12) + "px"; t.style.top = (e.clientY - b.top + 12) + "px";
+  t.innerHTML = `<b>${cropStyle(P.group, P.crop).label}</b> · field ${P.id}<br>${fmt(P.ha, 2)} ha${P.partial ? " · partly outside the area" : ""}`
+    + (s ? `<br>green LAI ${s.lai[w] == null ? "no value" : fmtUnc(s.lai[w], s.lai_unc[w], 1)} · ${sourceLabel(s.src[w])}<br>NDVI ${s.ndvi[w] == null ? "no value" : fmtUnc(s.ndvi[w], s.ndvi_unc[w], 2)}` : "");
+}
+function hideTip() { const t = document.getElementById("tip"); if (t) t.style.display = "none"; }
+
+// jump to a field by its ID: select it, open its panel and zoom the map to it
+function findField(q) {
+  const f = FV.geo.features.find(x => String(x.properties.id) === q), m = document.getElementById("fv-find-msg");
+  if (!f) { if (m) m.textContent = "not in this study area / season"; return; }
+  // extent from the field's own points (d3's spherical bounds treat a clockwise ring as 'everything but the field')
+  const p = proj(), pts = f.geometry.coordinates.flat(f.geometry.type === "MultiPolygon" ? 2 : 1).map(c => p(c));
+  const x0 = d3.min(pts, q => q[0]), x1 = d3.max(pts, q => q[0]), y0 = d3.min(pts, q => q[1]), y1 = d3.max(pts, q => q[1]), k = Math.min(500, 0.35 * Math.min(560 / (x1 - x0 || 1), 720 / (y1 - y0 || 1)));
+  d3.select("#map").transition().duration(600).call(FV.zoom.transform, d3.zoomIdentity.translate(280 - k * (x0 + x1) / 2, 360 - k * (y0 + y1) / 2).scale(k));
+  FV.sel = f.properties.id; drawFields(); fieldPanel(f.properties.id);
 }
 
 export function leaveField() {
@@ -137,6 +161,7 @@ function fieldFill(f) {
     return withinNoise(dv, s.lai_unc[w] ?? 0) ? "#8b96b4" : d3.interpolateRdBu(0.5 + Math.max(-0.5, Math.min(0.5, dv / 2)));
   }
   if (FV.layer === "alert") return s.alert[w] ? "#e0562a" : "none";
+  if (FV.layer === "crop") return cropStyle(f.properties.group, f.properties.crop).colour;
   return "none";
 }
 
@@ -148,7 +173,7 @@ export function drawFields() {
   const [ul, ur, ll] = FV.idx.areas[FV.area].corners_wgs84.map(c => p(c));
   const m = affineFromCorners(ul, ur, ll, 800, 800);
   const rgbD = FV.layer === "rgb" ? areaRgbDate(FV.rgb, FV.series.rgb_share, wk) : null;
-  const pix = FV.layer === "lai" || FV.layer === "ndvi" || FV.layer === "rgb";
+  const pix = FV.layer === "lai" || FV.layer === "ndvi" || FV.layer === "rgb";   // "crop" fills the field shapes instead
   const src = FV.layer === "rgb" ? (rgbD ? url(`${k}/rgb/${rgbD}.jpg`) : null) : url(`${k}/${FV.layer}/${wk}.png`);
   g.selectAll("image.ov").data(pix && src ? [src] : [])
     .join("image").attr("class", "ov").attr("href", d => d).attr("width", 800).attr("height", 800)
@@ -157,9 +182,9 @@ export function drawFields() {
   g.selectAll("path.f").data(FV.geo.features, f => f.properties.id)
     .join("path").attr("class", f => "f" + (f.properties.id === FV.sel ? " sel" : "")).attr("d", path)
     .attr("fill", pix ? "transparent" : fieldFill)
-    .on("click", (e, f) => { e.stopPropagation(); FV.sel = f.properties.id; drawFields(); fieldPanel(f.properties.id); })
-    .selectAll("title").data(f => [f]).join("title")
-    .text(f => { const s = FV.series.fields[f.properties.id]; return `Field ${f.properties.id} · ${f.properties.crop}` + (s ? ` · LAI ${fmtUnc(s.lai[FV.week], s.lai_unc[FV.week], 1)}` : ""); });
+    .on("click", (e, f) => { e.stopPropagation(); hideTip(); FV.sel = f.properties.id; drawFields(); fieldPanel(f.properties.id); })
+    .on("mousemove", (e, f) => fieldTip(e, f))
+    .on("mouseleave", hideTip);
   fieldLegend(rgbD);
 }
 
@@ -171,6 +196,8 @@ function fieldLegend(rgbD) {
     const ip = { YlGn: d3.interpolateYlGn, Purples: d3.interpolatePurples, RdBu: d3.interpolateRdBu }[L.scheme];
     const stops = d3.range(0, 1.01, 0.1).map(t => ip(L.scheme === "RdBu" ? t : 0.05 + 0.95 * t));
     h = `<span>${L.min}</span><span class="bar" style="background:linear-gradient(90deg,${stops.join(",")})"></span><span>${L.max} ${L.unit}</span>`;
+  } else if (FV.layer === "crop") {
+    h = cropSummary(FV.geo.features.map(f => f.properties)).slice(0, 12).map(c => `<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${c.colour}"></span> ${c.label} (${c.n})</span>`).join(" ");
   } else if (L.kind === "swatches") {
     const col = FV.layer === "alert" ? ["#e0562a"] : SRC_COL;
     h = L.items.map((t, i) => `<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${col[i]}"></span> ${t}</span>`).join(" ");
@@ -197,31 +224,6 @@ async function districtContext(f) {
     <b>${fmt(r[0])} t/ha</b>${r[1] != null ? ` (80 %: ${fmt(r[1])}–${fmt(r[2])})` : ""}${r[3] != null ? ` · official ${fmt(r[3])}` : ""}</p>` : "";
 }
 
-function rgbCanvas(s) {
-  const d = fieldRgbDate(FV.rgb, s.clr, FV.series.weeks[FV.week]);
-  if (!d) return "";                                         // no image unless >= 95 % of the field was clear within 10 days
-  return `<canvas id="fv-rgb" width="320" height="240" style="width:100%;max-width:320px;border-radius:6px"></canvas>
-    <p class="note">Sentinel-2 true colour, ${d} (≥ 95 % of the field clear)</p>`;
-}
-
-function paintRgb(s) {
-  const c = document.getElementById("fv-rgb");
-  if (!c) return;
-  const d = fieldRgbDate(FV.rgb, s.clr, FV.series.weeks[FV.week]), [r0, r1, c0, c1] = s.bb, pad = 6;
-  const img = new Image();
-  img.onload = () => {
-    const sx = Math.max(0, c0 - pad), sy = Math.max(0, r0 - pad), sw = Math.min(800, c1 + pad) - sx, sh = Math.min(800, r1 + pad) - sy;
-    const sc = Math.min(c.width / sw, c.height / sh), dw = sw * sc, dh = sh * sc;
-    const ctx = c.getContext("2d");
-    ctx.fillStyle = css("--panel"); ctx.fillRect(0, 0, c.width, c.height);
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(img, sx, sy, sw, sh, (c.width - dw) / 2, (c.height - dh) / 2, dw, dh);
-    ctx.strokeStyle = "#f2a93b"; ctx.lineWidth = 2;
-    ctx.strokeRect((c.width - dw) / 2 + (c0 - sx) * sc, (c.height - dh) / 2 + (r0 - sy) * sc, (c1 - c0) * sc, (r1 - r0) * sc);
-  };
-  img.src = url(`${FV.area}_${FV.year}/rgb/${d}.jpg`);
-}
-
 export async function fieldPanel(id) {
   const f = FV.geo.features.find(x => x.properties.id === id), s = FV.series.fields[id], w = FV.week;
   if (!f || !s) return;
@@ -244,12 +246,11 @@ export async function fieldPanel(id) {
     <h3>Weekly green LAI</h3>${seriesChart({ values: s.lai, unc: s.lai_unc, src: s.src, season: s.season, week: w, weeks: FV.series.weeks, max: 6, label: "green LAI" })}
     <h3>Weekly NDVI</h3>${seriesChart({ values: s.ndvi, unc: s.ndvi_unc, src: s.ndvi_src, season: s.season, week: w, weeks: FV.series.weeks, max: 1, label: "NDVI" })}
     <p class="note">${SOURCE_COLOURS.map((c, i) => i ? `<span style="margin-right:10px;white-space:nowrap"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c}"></span> ${sourceLabel(i)}</span>` : "").join("")}<br>Band: ± typical error. Shaded weeks: before sowing / after harvest. Dashed: selected week.</p>
-    ${rgbCanvas(s) ? `<h3>Sentinel-2 image</h3>${rgbCanvas(s)}` : ""}`;
+`;
   h += await districtContext(f);
   h += `<p class="note"><b>Field yield: not shown yet</b> (needs field yield data).</p>
     <p><button id="fv-add">Add to my fields</button> <button id="fv-back">Back to districts</button></p>${attribution()}`;
   document.getElementById("panel").innerHTML = h;
-  paintRgb(s);
   document.getElementById("fv-back").onclick = leaveField;
   document.getElementById("fv-add").onclick = () => window.MYFIELDS?.add({ area: FV.area, year: FV.year, id });
 }
