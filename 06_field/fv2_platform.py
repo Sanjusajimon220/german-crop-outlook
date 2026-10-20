@@ -113,7 +113,7 @@ def export(area, year):
         return
     for sub in ("lai", "ndvi", "rgb"):
         os.makedirs(os.path.join(out, sub), exist_ok=True)
-    z = np.load(os.path.join(out_dir(area, year), OUTFILE))
+    z = dict(np.load(os.path.join(out_dir(area, year), OUTFILE)))   # load once: NpzFile re-reads an array on every access
     weeks = [str(w) for w in z["weeks"]]
     rows, cols = z["rows"], z["cols"]
     px = pd.read_csv(os.path.join(out_dir(area, year), "pixels_nrw.csv.gz"))
