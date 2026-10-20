@@ -1,7 +1,7 @@
 // MY FIELDS: fields picked on the map (kept in this browser, no accounts), list + map, zones, rates, exports.
 import { loadMyFields, saveMyFields, zones, fmtUnc, sourceLabel, withinNoise, nearestRgbDate, clearRgbDate,
          affineFromCorners, invertAffine, applyAffine, groupMedian, exportCheck, noDataReason, fieldRgbDate,
-         seriesChart, SOURCE_COLOURS, legendSpec, cropStyle, vsMedianText, cropSummary, cropMedians } from "./field_core.js";
+         seriesChart, SOURCE_COLOURS, legendSpec, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames } from "./field_core.js";
 const badge = (g, c) => { const k = cropStyle(g, c); return `<span class="crop" style="--c:${k.colour}"><i></i>${k.label}</span>`; };
 
 import { buildTaskData } from "./isoxml.js";
@@ -15,7 +15,8 @@ export const EXAMPLES = [{ area: "pilot", year: 2025, id: 8702226 }, { area: "se
 let ST = loadMyFields(safeStorage(), EXAMPLES);
 let CUR = null;
 const AREA_NAMES = { pilot: "Pilot · Düren", selhausen: "Selhausen", north: "North", south: "South" };
-const AV = { area: "pilot", year: 2025, crop: null, geo: null, series: null };   // the study area shown
+const AV = { area: "pilot", year: 2025, crop: null, geo: null, series: null, view: "crops", frame: 0, step: "month", timer: null };   // the study area shown
+const NOVAL = "#3a4157";                     // field pixel without a value yet (before its first clear image)
 const PXIDX = {};
 
 function safeStorage() { try { return window.localStorage; } catch (e) { return null; } }
@@ -212,22 +213,23 @@ async function paint() {
   const map = document.getElementById("mf-map"), leg = document.getElementById("mf-legend"), cap = document.getElementById("mf-map-cap");
   if (CUR.layer === "zones") {
     const { z } = currentZones();
-    fieldCanvas(map, pb, i => (z.classes[i] < 0 ? null : ZCOL[z.n === 1 ? 1 : z.classes[i]]));
+    fieldCanvas(map, pb, i => (z.classes[i] < 0 ? NOVAL : ZCOL[z.n === 1 ? 1 : z.classes[i]]));
     leg.innerHTML = ["weak", "mid", "strong"].map((t, i) => `<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${ZCOL[i]}"></span> ${t}</span>`).join(" ");
     cap.textContent = z.n === 1 ? "One zone (field too small or too uniform)" : `${z.n} zones from the mean green LAI of the chosen period`;
   } else {
     const L = legendSpec(CUR.layer);
-    if (CUR.layer === "lai") fieldCanvas(map, pb, i => { const v = pb.raw[w * n + i]; return v === pb.nodata ? null : d3.interpolateYlGn(0.05 + 0.95 * Math.min(1, v / pb.scale / L.max)); });
+    if (CUR.layer === "lai") fieldCanvas(map, pb, i => { const v = pb.raw[w * n + i]; return v === pb.nodata ? NOVAL : d3.interpolateYlGn(0.05 + 0.95 * Math.min(1, v / pb.scale / L.max)); });
     else {
       const img = await areaPng(`${CUR.area}_${CUR.year}/ndvi/${wk}.png`).catch(() => null);
       fieldCanvas(map, pb, i => {
-        if (!img) return null;
+        if (!img) return NOVAL;
         const k = 4 * (pb.e.r[i] * img.width + pb.e.c[i]), a = img.data;
-        return a[k + 3] ? `rgb(${a[k]},${a[k + 1]},${a[k + 2]})` : null;
+        return a[k + 3] ? `rgb(${a[k]},${a[k + 1]},${a[k + 2]})` : NOVAL;
       });
     }
     const stops = d3.range(0, 1.01, 0.1).map(t => d3.interpolateYlGn(0.05 + 0.95 * t));
-    leg.innerHTML = `<span>${L.min}</span><span class="bar" style="background:linear-gradient(90deg,${stops.join(",")})"></span><span>${L.max} ${L.unit}</span>`;
+    leg.innerHTML = `<span>${L.min}</span><span class="bar" style="background:linear-gradient(90deg,${stops.join(",")})"></span><span>${L.max} ${L.unit}</span>`
+      + `<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${NOVAL}"></span> no value yet</span>`;
     const sv = CUR.layer === "lai" ? s.src[w] : s.ndvi_src[w];
     cap.textContent = `${CUR.layer === "lai" ? "Green LAI" : "NDVI"} per 10 m pixel, week of ${wk} · ${sourceLabel(sv)}`;
   }
@@ -323,8 +325,21 @@ export async function renderAreas() {
       <div class="stat"><div class="k">Crops</div><div class="v">${all.length}</div><div class="note">${main.length} main</div></div>
       <div class="stat"><div class="k">Median LAI, arable</div><div class="v">${medLai == null ? "–" : medLai.toFixed(1)}</div><div class="note">week of ${d.series.weeks[w]}</div></div>
     </div>
+    <div class="seg" style="margin-bottom:10px">${[["crops", "Crops"], ["lai", "Green LAI"], ["ndvi", "NDVI"]].map(([k, t]) => `<button data-view="${k}" class="${k === AV.view ? "on" : ""}">${t}</button>`).join("")}</div>
     <div class="mf-mapgrid">
-      <svg id="mf-areamap" viewBox="0 0 520 520" role="img" aria-label="Fields of the study area coloured by crop"></svg>
+      <div>
+        <svg id="mf-areamap" viewBox="0 0 520 520" role="img" aria-label="Fields of the study area coloured by crop" ${AV.view === "crops" ? "" : "hidden"}></svg>
+        <div id="mf-animbox" ${AV.view === "crops" ? "hidden" : ""}>
+          <canvas id="mf-anim" width="800" height="800" style="width:100%;display:block;background:var(--bg);border-radius:8px;border:1px solid var(--line)" role="img" aria-label="Weekly map of the whole study area"></canvas>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
+            <button id="mf-play" aria-label="Play">▶ Play</button>
+            <select id="mf-step" aria-label="Animation step"><option value="month" ${AV.step === "month" ? "selected" : ""}>Monthly</option><option value="week" ${AV.step === "week" ? "selected" : ""}>Weekly</option></select>
+            <input type="range" id="mf-frame" min="0" value="0" style="flex:1 1 160px" aria-label="Date">
+            <b id="mf-frame-lbl"></b>
+          </div>
+          <div class="legend" id="mf-anim-legend" style="margin-top:6px"></div>
+        </div>
+      </div>
       <aside class="legendlist" aria-label="Crops">
         <div class="k" style="margin-bottom:4px">Crops · click to filter</div>
         ${[{ label: "All crops", colour: "#8b96b4", n: props.length, ha: total }].concat(rows).map(c => `
@@ -335,11 +350,67 @@ export async function renderAreas() {
       </aside>
     </div>
     <h3>Median green LAI per crop</h3><div id="mf-areachart"></div>`;
-  box.querySelectorAll("button[data-area]").forEach(b => b.onclick = () => { AV.area = b.dataset.area; AV.crop = null; renderAreas(); });
-  document.getElementById("mf-year").onchange = e => { AV.year = +e.target.value; renderAreas(); };
+  box.querySelectorAll("button[data-area]").forEach(b => b.onclick = () => { stopAnim(); AV.area = b.dataset.area; AV.crop = null; renderAreas(); });
+  box.querySelectorAll("button[data-view]").forEach(b => b.onclick = () => { stopAnim(); AV.view = b.dataset.view; AV.frame = null; renderAreas(); });
+  document.getElementById("mf-year").onchange = e => { stopAnim(); AV.year = +e.target.value; renderAreas(); };
   box.querySelectorAll("button[data-crop]").forEach(b => b.onclick = () => { AV.crop = b.dataset.crop === "All crops" ? null : b.dataset.crop; renderAreas(); });
   drawAreaMap(all);
   drawAreaChart(props, all);
+  if (AV.view !== "crops") initAnim();
+}
+
+// ---- whole-area animation of the weekly 10 m maps (monthly or weekly steps) ----
+function animFrames() {
+  const wk = AV.series.weeks;
+  return AV.step === "month" ? monthlyFrames(wk) : wk.map((_, i) => i);
+}
+
+function stopAnim() {
+  if (AV.timer) { clearInterval(AV.timer); AV.timer = null; }
+  const b = document.getElementById("mf-play"); if (b) b.textContent = "▶ Play";
+}
+
+const FRAMES = {};
+function frameImage(path) {
+  if (!FRAMES[path]) FRAMES[path] = new Promise(ok => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = url(path); });
+  return FRAMES[path];
+}
+
+async function drawFrame() {
+  const fr = animFrames(), k = Math.min(AV.frame ?? 0, fr.length - 1), w = fr[k], wk = AV.series.weeks[w];
+  document.getElementById("mf-frame").value = k;
+  const d = new Date(wk + "T00:00:00Z");
+  document.getElementById("mf-frame-lbl").textContent = AV.step === "month"
+    ? d.toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" }) : `week of ${d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })}`;
+  const im = await frameImage(`${AV.area}_${AV.year}/${AV.view}/${wk}.png`), c = document.getElementById("mf-anim");
+  if (!c) return;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = getComputedStyle(document.body).getPropertyValue("--bg") || "#0a0e1a"; ctx.fillRect(0, 0, c.width, c.height);
+  if (im) { ctx.imageSmoothingEnabled = false; ctx.drawImage(im, 0, 0, c.width, c.height); }
+  fr.slice(k + 1, k + 3).forEach(i => frameImage(`${AV.area}_${AV.year}/${AV.view}/${AV.series.weeks[i]}.png`));   // preload the next frames
+}
+
+function initAnim() {
+  const fr = animFrames(), sl = document.getElementById("mf-frame");
+  if (AV.frame == null) AV.frame = Math.max(0, fr.findIndex(i => AV.series.weeks[i] >= `${AV.year}-05-01`));
+  sl.max = fr.length - 1;
+  const L = legendSpec(AV.view), stops = d3.range(0, 1.01, 0.1).map(t => d3.interpolateYlGn(0.05 + 0.95 * t));
+  document.getElementById("mf-anim-legend").innerHTML = `<span>${L.min}</span><span class="bar" style="background:linear-gradient(90deg,${stops.join(",")})"></span><span>${L.max} ${L.unit}</span>`
+    + `<span class="note">dark: not a field or no value yet · weekly re-analysis, ${AV.year} season</span>`;
+  sl.oninput = e => { stopAnim(); AV.frame = +e.target.value; drawFrame(); };
+  document.getElementById("mf-step").onchange = e => {
+    const cur = animFrames()[AV.frame]; stopAnim(); AV.step = e.target.value;
+    const f2 = animFrames(); AV.frame = Math.max(0, f2.findIndex(i => i >= cur)); sl.max = f2.length - 1; drawFrame();
+  };
+  document.getElementById("mf-play").onclick = () => {
+    if (AV.timer) { stopAnim(); return; }
+    document.getElementById("mf-play").textContent = "⏸ Pause";
+    AV.timer = setInterval(() => {
+      if (!document.getElementById("mf-anim")) { stopAnim(); return; }
+      AV.frame = (AV.frame + 1) % animFrames().length; drawFrame();
+    }, AV.step === "month" ? 900 : 350);
+  };
+  drawFrame();
 }
 
 function chipMatch(label) {

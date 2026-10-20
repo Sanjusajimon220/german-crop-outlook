@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc , leavesField, clearRgbDate, fieldUrl, noDataReason, zoomAllowed, areaToEnter, groupMedian, exportCheck, fieldRgbDate, areaRgbDate, legendSpec, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary, cropMedians } from "../../docs/js/field_core.js";
+import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc , leavesField, clearRgbDate, fieldUrl, noDataReason, zoomAllowed, areaToEnter, groupMedian, exportCheck, fieldRgbDate, areaRgbDate, legendSpec, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames } from "../../docs/js/field_core.js";
 
 const weeks = ["2024-05-20", "2024-05-27", "2024-06-03"];
 
@@ -178,4 +178,9 @@ test("common special crops get English names too", () => {
   assert.equal(cropStyle("other", "Gartenkürbis").label, "Pumpkin");
   assert.equal(cropStyle("other", "Möhre (auch Futtermöhre)").label, "Carrot");
   assert.equal(cropStyle("other cereal", "Winterhafer").label, "Winter oats");
+});
+
+test("animation frames: the first week of every month", () => {
+  const weeks = ["2024-09-30", "2024-10-07", "2024-10-28", "2024-11-04", "2024-11-25", "2024-12-02"];
+  assert.deepEqual(monthlyFrames(weeks), [0, 1, 3, 5]);     // Sep, Oct, Nov, Dec
 });

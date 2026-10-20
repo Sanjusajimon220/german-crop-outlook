@@ -173,6 +173,11 @@ export function cropMedians(props, fields, minN = 10) {
   return out;
 }
 
+// animation frames: index of the first week (Monday) of every month
+export function monthlyFrames(weeks) {
+  return weeks.map((w, i) => [w.slice(0, 7), i]).filter(([m], i, a) => i === 0 || a[i - 1][0] !== m).map(([, i]) => i);
+}
+
 // colours of the value sources (measured, straight line, radar, after the last clear image); index 0 = no value
 export const SOURCE_COLOURS = ["#555", "#4caf7d", "#7cc4ec", "#f2a93b", "#c07ad6"];
 
