@@ -17,8 +17,10 @@ import phase11_fusion_test as F
 from areas import AREAS
 
 OUT = os.path.join("data", "processed", "field_v2")
-ROWS = os.path.join(OUT, "area_rows")
-PARTS = os.path.join(OUT, "area_parts")
+RF = "rf" in sys.argv[2:]                                          # step 4 fix 1: the same test with the winter radar filter
+F.RADAR_FILTER = RF
+ROWS = os.path.join(OUT, "area_rows_rf" if RF else "area_rows")
+PARTS = os.path.join(OUT, "area_parts_rf" if RF else "area_parts")
 YEARS = range(2021, 2026)
 F.N_SEASONS = 13                                                   # 3 M / 12 = 250,000 rows per area-season and model
 DROP = F.VARIANTS["V2"]
@@ -102,5 +104,33 @@ def summary():
               f"{n_win}/{len(long)} area-seasons -> DESIGN {'ADOPTED' if ok else 'NOT adopted'}")
 
 
+def summary_rf():
+    """Fix 1 rule (project log 2026-10-20): the design with vs without the filter on identical hidden values; adopted if
+    Nov-Feb RMSE falls for LAI and NDVI in >= 3 of 4 areas and Mar-Aug is not worse by > 0.01 LAI / 0.002 NDVI (pooled)."""
+    rm = lambda v: float(np.sqrt(np.mean(np.square(v))))
+    tol = {"lai": 0.01, "ndvi": 0.002}
+    verdict = {}
+    for t in ("lai", "ndvi"):
+        rows, pooled = [], {"base": {"win": [], "rest": []}, "rf": {"win": [], "rest": []}}
+        for a in AREAS:
+            per = {}
+            for tag, d in (("base", os.path.join(OUT, "area_parts")), ("rf", os.path.join(OUT, "area_parts_rf"))):
+                e = pd.concat([pd.read_csv(os.path.join(d, f"{t}_{a}_{y}.csv.gz")) for y in YEARS])
+                e["err"] = np.where(e.gap_s2 <= 30, e.line, e.reanalysis) - e.obs
+                e["win"] = pd.to_datetime(e.date).dt.month.isin([11, 12, 1, 2])
+                per[tag] = (rm(e.err[e.win]), rm(e.err[~e.win]), int(e.win.sum()))
+                pooled[tag]["win"].append(e.err[e.win].values); pooled[tag]["rest"].append(e.err[~e.win].values)
+            rows.append(dict(target=t, area=a, n_winter=per["base"][2], winter_base=per["base"][0], winter_rf=per["rf"][0],
+                             spring_summer_base=per["base"][1], spring_summer_rf=per["rf"][1]))
+        q = pd.DataFrame(rows).round(4)
+        print(q.to_string(index=False))
+        better = int((q.winter_rf < q.winter_base).sum())
+        rest_b, rest_f = rm(np.concatenate(pooled["base"]["rest"])), rm(np.concatenate(pooled["rf"]["rest"]))
+        ok = better >= 3 and rest_f <= rest_b + tol[t]
+        verdict[t] = ok
+        print(f"{t}: Nov-Feb better in {better}/4 areas; Mar-Aug pooled {rest_b:.4f} -> {rest_f:.4f} (limit +{tol[t]}) -> {'pass' if ok else 'fail'}")
+    print(f"RESULT fix1: {'ADOPTED' if all(verdict.values()) else 'NOT adopted'} (LAI {'pass' if verdict['lai'] else 'fail'}, NDVI {'pass' if verdict['ndvi'] else 'fail'})")
+
+
 if __name__ == "__main__":
-    {"rows": build_rows, "test": test, "summary": summary}[sys.argv[1]]()
+    {"rows": build_rows, "test": test, "summary": summary, "summary_rf": summary_rf}[sys.argv[1]]()

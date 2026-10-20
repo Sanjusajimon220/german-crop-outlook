@@ -28,6 +28,76 @@ def nearest(dates, d, tol=3):
     return k if abs((dates[k] - d).days) <= tol else -1
 
 
+RADAR_FILTER = False                                               # step 4 fix 1 (project log 2026-10-20): winter radar filter
+
+
+def radar_flags(dates, w, snow_cm=None):
+    """True for Sentinel-1 dates disturbed by frost (tasmin < -2 C that day or the day before), snow or wet soil (> 10 mm on
+    that day and the day before). Snow: measured DWD snow depth >= 1 cm that day (snow_cm, NaN = no station value); without a
+    value, the weather proxy (>= 1 mm on a day with tas <= 0.5 C within the 3 days before). w: daily tasmin, tas, pr."""
+    snow = (w["pr"] >= 1) & (w["tas"] <= 0.5)
+    out = []
+    for d in dates:
+        d = pd.Timestamp(d).normalize()
+        frost = (w["tasmin"].loc[d - pd.Timedelta(days=1):d] < -2).any()
+        m = snow_cm.get(d, np.nan) if snow_cm is not None else np.nan
+        sn = (m >= 1) if np.isfinite(m) else snow.loc[d - pd.Timedelta(days=3):d].any()
+        wet = w["pr"].loc[d - pd.Timedelta(days=1):d].sum() > 10
+        out.append(bool(frost or sn or wet))
+    return np.array(out)
+
+
+def nearest_ok(dates, d, ok, tol=3):
+    """Nearest radar date to d among the unflagged ones (ok), within tol days; -1 if none."""
+    gaps = np.abs(np.asarray((dates - d).days, dtype=float))
+    gaps[~ok] = np.inf
+    k = int(np.argmin(gaps))
+    return k if gaps[k] <= tol else -1
+
+
+def station_snow(area, max_km=40):
+    """Daily measured snow depth (cm) for an area: per day the nearest DWD station (within max_km) that reported a value."""
+    import glob
+    import io
+    import zipfile
+    from pyproj import Transformer
+    from areas import bounds
+    x0, y0, x1, y1 = bounds(area)
+    lon0, lat0 = Transformer.from_crs(25832, 4326, always_xy=True).transform((x0 + x1) / 2, (y0 + y1) / 2)
+    raw = os.path.join("data", "raw")
+    desc = open(os.path.join(raw, "dwd_stations", "KL_Tageswerte_Beschreibung_Stationen.txt"), encoding="latin-1").read().splitlines()[2:]
+    st = []
+    for line in desc:
+        p = line.split()
+        if len(p) > 7:
+            lat, lon = float(p[4]), float(p[5])
+            km = 111.2 * np.hypot(lat - lat0, (lon - lon0) * np.cos(np.radians(lat0)))
+            if km <= max_km:
+                st.append((km, p[0]))
+    series = []
+    for km, sid in sorted(st):
+        parts = []
+        for f in glob.glob(os.path.join(raw, "dwd_stations", f"tageswerte_KL_{sid}_*_hist.zip")) + glob.glob(os.path.join(raw, "dwd_stations_recent", f"tageswerte_KL_{sid}_akt.zip")):
+            z = zipfile.ZipFile(f)
+            d = pd.read_csv(io.BytesIO(z.read([n for n in z.namelist() if n.startswith("produkt")][0])), sep=";", skipinitialspace=True, na_values=[-999])
+            parts.append(pd.Series(d["SHK_TAG"].values, index=pd.to_datetime(d["MESS_DATUM"].astype(str))))
+        if parts:
+            s = pd.concat(parts)
+            series.append(s[~s.index.duplicated(keep="last")])
+    if not series:
+        return pd.Series(dtype=float)
+    out = series[0]
+    for s in series[1:]:                                         # nearer stations first; farther ones fill their gaps
+        out = out.combine_first(s)
+    return out.sort_index()
+
+
+def district_weather(dist):
+    w = np.load(os.path.join("data", "processed", "weather_daily_v8.npz"))
+    j = list(w["codes"]).index(dist)
+    return pd.DataFrame({v: w[v][:, j] for v in ("tasmin", "tas", "pr")}, index=pd.DatetimeIndex(w["dates"]))
+
+
 class Season:
     """One area-season: measured values on a date axis (S2, optionally + Landsat LAI), radar, context, hiding."""
 
@@ -73,8 +143,14 @@ class Season:
         folds = {f: i % 5 for i, f in enumerate(rng.permutation(px["fids"]))}
         self.fold = np.array([folds[f] for f in px["fid"]])
         self.orb = fv2.radar(area, year, px)
-        self.k_s1 = {o: np.array([nearest(self.orb[o][0], d) for d in dates]) for o in fv2.ORBITS}
         dist = fv2.district_of(area, year, px)
+        if RADAR_FILTER:                                          # disturbed radar dates are not used (nearest clean one instead)
+            w = district_weather(dist)
+            snow = station_snow(area)
+            ok = {o: ~radar_flags(pd.DatetimeIndex(self.orb[o][0]), w, snow) for o in fv2.ORBITS}
+            self.k_s1 = {o: np.array([nearest_ok(pd.DatetimeIndex(self.orb[o][0]), d, ok[o]) for d in dates]) for o in fv2.ORBITS}
+        else:
+            self.k_s1 = {o: np.array([nearest(self.orb[o][0], d) for d in dates]) for o in fv2.ORBITS}
         self.ctx, self.rain = fv2.context(dates, year, dist)
         self.days = (dates - dates[0]).days.values
 

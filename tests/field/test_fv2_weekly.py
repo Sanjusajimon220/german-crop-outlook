@@ -1,4 +1,4 @@
-import numpy as np
+﻿import numpy as np
 
 import fv2_weekly as W
 
@@ -37,7 +37,7 @@ def test_weekly_matches_assign_week():
     import os
     from areas import out_dir
     weeks = W.mondays(2024)
-    z = np.load(os.path.join(out_dir("pilot", 2024), W.OUTFILE))
+    z = dict(np.load(os.path.join(out_dir("pilot", 2024), W.OUTFILE)))     # load once (NpzFile re-reads on every access)
     S = W.season_on_weeks("pilot", 2024, "lai", weeks)
     s2 = S.s2_rows
     rng = np.random.default_rng(1)
