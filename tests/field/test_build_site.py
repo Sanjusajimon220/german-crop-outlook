@@ -41,3 +41,15 @@ def test_headers_cache_field_files(tmp_path):
     B.build_site(str(src), str(site), backup_root=str(tmp_path / "bk"))
     h = (site / "_headers").read_text()
     assert "/crop-outlook/field/*" in h and "max-age" in h
+
+
+def test_build_site_refuses_incomplete_source_and_keeps_the_live_folder(tmp_path):
+    # review 2026-10-20: docs/data is git-ignored; a fresh checkout has no district data
+    import pytest
+    src, site = _src(tmp_path), tmp_path / "site"
+    (src / "data" / "meta.json").unlink()
+    (site / "crop-outlook").mkdir(parents=True)
+    (site / "crop-outlook" / "live.html").write_text("live")
+    with pytest.raises(FileNotFoundError):
+        B.build_site(str(src), str(site), backup_root=str(tmp_path / "bk"))
+    assert (site / "crop-outlook" / "live.html").read_text() == "live"

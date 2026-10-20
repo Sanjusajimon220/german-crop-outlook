@@ -44,22 +44,27 @@ def alerts(field, unc, median):
     return out
 
 
+WINTER_SOW_WEEKS = 10                                         # weeks from 1 Oct searched for winter sowing (Oct - early Dec)
+SPRING_FROM_WEEK = 21                                         # spring crops: sowing searched from ~1 March on
+
+
 def season_mask(lai, group):
-    """1 = the registered crop is in the field, 0 = before sowing (previous crop / bare) or after harvest.
-    Winter crops: from the autumn minimum (sowing); spring crops: from the minimum before the first rise above 0.5 in
-    the second half of the season; both until the last week above 0.5."""
+    """1 = the registered crop is in the field, 0 = before sowing (previous crop / cover crop / bare) or after harvest.
+    Weeks are Mondays from 1 October. Winter crops: from the minimum in the sowing window (October to early December),
+    so a mid-winter frost dip is not taken for sowing; spring crops: from the minimum between ~1 March and the first
+    rise above 0.5, so a winter cover crop is not taken for the crop; both until the last week above 0.5."""
     x = np.asarray(lai, float)
     n = len(x)
     if not np.isfinite(x).any():
         return [0] * n
     xx = np.where(np.isfinite(x), x, np.inf)
     if group in SPRING:
-        half = n // 2
-        rise = [i for i in range(half, n) if np.isfinite(x[i]) and x[i] > SEASON_LAI]
+        lo = min(SPRING_FROM_WEEK, n - 1)
+        rise = [i for i in range(lo, n) if np.isfinite(x[i]) and x[i] > SEASON_LAI]
         stop = rise[0] if rise else n
-        start = int(np.argmin(xx[:stop])) if stop > 0 else 0
+        start = lo + int(np.argmin(xx[lo:stop])) if stop > lo else lo
     else:
-        start = int(np.argmin(xx[: max(1, n // 2)]))
+        start = int(np.argmin(xx[: min(WINTER_SOW_WEEKS, n)]))
     above = [i for i in range(n) if np.isfinite(x[i]) and x[i] > SEASON_LAI]
     end = above[-1] if above else start
     return [1 if start <= i <= end else 0 for i in range(n)]
@@ -189,7 +194,8 @@ def export(area, year):
 
 
 def write_index():
-    idx = {"areas": {}}
+    import time
+    idx = {"version": time.strftime("%Y%m%d%H%M%S"), "areas": {}}   # the app appends ?v=version to every field file
     for a in AREAS:
         x0, y0, x1, y1 = bounds(a)
         w, s, e, n = gpd.GeoSeries([box(x0, y0, x1, y1)], crs=25832).to_crs(4326).total_bounds

@@ -42,3 +42,8 @@ test("zones ignore missing values", () => {
   assert.equal(z.classes[4], -1);
   assert.equal(z.n, 3);
 });
+
+test("loadMyFields drops malformed entries instead of breaking the list", () => {
+  const s = JSON.stringify({ fields: [null, {}, { area: "pilot", year: 2024, id: 7493815 }, { area: 3, year: "x", id: 1 }], rates: {} });
+  assert.deepEqual(loadMyFields(mem([[KEY, s]])).fields, [{ area: "pilot", year: 2024, id: 7493815 }]);
+});

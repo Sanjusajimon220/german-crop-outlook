@@ -1,10 +1,9 @@
 // MY FIELDS: fields picked on the map (kept in this browser, no accounts), list + map, zones, rates, exports.
 import { loadMyFields, saveMyFields, zones, fmtUnc, sourceLabel, withinNoise, nearestRgbDate, clearRgbDate,
-         affineFromCorners, invertAffine, applyAffine } from "./field_core.js";
+         affineFromCorners, invertAffine, applyAffine, groupMedian, exportCheck, noDataReason } from "./field_core.js";
 import { buildTaskData } from "./isoxml.js";
-import { FV, loadSeason, attribution } from "./field_view.js";
+import { FV, loadSeason, attribution, url } from "./field_view.js";
 
-const BASE = "field/";
 const ARABLE = new Set(["wheat", "barley", "other cereal", "rapeseed", "maize", "potato", "sugar beet"]);
 const ZCOL = ["#d9534f", "#f0ad4e", "#2e9e5b"];
 let ST = loadMyFields(safeStorage());
@@ -30,9 +29,9 @@ function remove(f) {
 
 async function pixelBlock(area, year, id) {
   const k = `${area}_${year}`;
-  if (!PXIDX[k]) PXIDX[k] = await fetch(`${BASE}${k}/px.json`).then(r => r.json());
+  if (!PXIDX[k]) PXIDX[k] = await fetch(url(`${k}/px.json`)).then(r => r.json());
   const e = PXIDX[k].fields[String(id)];
-  const r = await fetch(`${BASE}${k}/px.bin`, { headers: { Range: `bytes=${e.o}-${e.o + e.l - 1}` } });
+  const r = await fetch(url(`${k}/px.bin`), { headers: { Range: `bytes=${e.o}-${e.o + e.l - 1}` } });
   let buf = await r.arrayBuffer();
   if (r.status === 200) buf = buf.slice(e.o, e.o + e.l);               // host ignored the range: cut it ourselves
   const ds = new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
@@ -62,15 +61,19 @@ function drawPixels(canvas, pb, colourOf) {
   }
 }
 
+const rm = f => `<button data-rm="${key(f)}" aria-label="Remove field ${f.id}">✕</button>`;
+
 function listRow(f, data) {
-  const s = data.series.fields[f.id], w = data.week;
-  if (!s) return `<tr><td>${f.id}</td><td colspan="7">no data for ${f.year}</td></tr>`;
+  const s = data && data.series.fields[f.id], w = data && data.week;
+  if (!s) return `<tr><td>${f.id}</td><td colspan="7">data not available for ${f.area} ${f.year}</td><td>${rm(f)}</td></tr>`;
+  const med = groupMedian(data.series.fields, s.group, w), dm = s.lai[w] != null && med ? s.lai[w] - med : null;
+  const vm = dm == null ? "–" : `${dm > 0 ? "+" : ""}${Math.round(100 * dm / med)} %${withinNoise(dm, s.lai_unc[w] ?? 0) ? " (within noise)" : ""}`;
   const dv = w > 0 && s.lai[w] != null && s.lai[w - 1] != null ? s.lai[w] - s.lai[w - 1] : null;
   const ch = dv == null ? "–" : withinNoise(dv, s.lai_unc[w] ?? 0) ? "within noise" : (dv > 0 ? "▲ " : "▼ ") + Math.abs(dv).toFixed(1);
   const al = s.alert[w] === 1 ? "below median" : s.alert[w] === 2 ? "falling" : "";
   return `<tr data-k="${key(f)}" ${CUR && key(CUR) === key(f) ? 'style="background:var(--accent-soft)"' : ""}>
-    <td>${f.id}</td><td>${s.group}</td><td>${f.year}</td><td>${fmtUnc(s.lai[w], s.lai_unc[w], 1)}</td><td>${ch}</td>
-    <td>${sourceLabel(s.src[w])}</td><td class="lose">${al}</td><td><button data-rm="${key(f)}" aria-label="Remove field ${f.id}">✕</button></td></tr>`;
+    <td>${f.id}${data.partial ? " ⚠" : ""}</td><td>${s.group}</td><td>${f.year}</td><td>${s.lai[w] == null ? noDataReason(s.src, w) || "no data" : fmtUnc(s.lai[w], s.lai_unc[w], 1)}</td>
+    <td>${vm}</td><td>${ch}</td><td>${sourceLabel(s.src[w])}${s.season[w] ? "" : " · off-season"}</td><td class="lose">${al}</td><td>${rm(f)}</td></tr>`;
 }
 
 export async function render() {
@@ -83,16 +86,18 @@ export async function render() {
   }
   const rows = [];
   for (const f of ST.fields) {
-    const d = await loadSeason(f.area, f.year);
+    let d = null;
+    try { d = await loadSeason(f.area, f.year); } catch (e) { rows.push({ f, d: null, sort: 2 }); continue; }   // removed after a rebuild
     const wk = d.series.weeks, week = FV.active && FV.year === f.year ? FV.week : Math.max(0, wk.findIndex(w => w >= `${f.year}-05-20`));
-    rows.push({ f, d: { series: d.series, week }, sort: d.series.fields[f.id]?.alert[week] ? 0 : 1 });
+    const partial = !!d.geo.features.find(x => x.properties.id === f.id)?.properties.partial;
+    rows.push({ f, d: { series: d.series, week, partial }, sort: d.series.fields[f.id]?.alert[week] ? 0 : 1 });
   }
   rows.sort((a, b) => a.sort - b.sort || a.f.id - b.f.id);
-  box.innerHTML = `<div class="tbl"><table><thead><tr><th>Field</th><th>Crop</th><th>Season</th><th>Green LAI</th><th>Δ week</th><th>Source</th><th>Alert</th><th></th></tr></thead>
-    <tbody>${rows.map(x => listRow(x.f, x.d)).join("")}</tbody></table></div><p class="note">Week shown: ${rows[0].d.series.weeks[rows[0].d.week]} (change it with the date slider in the Explorer). Click a row to open the field.</p>`;
+  box.innerHTML = `<div class="tbl"><table><thead><tr><th>Field</th><th>Crop</th><th>Season</th><th>Green LAI</th><th>vs median</th><th>Δ week</th><th>Source</th><th>Alert</th><th></th></tr></thead>
+    <tbody>${rows.map(x => listRow(x.f, x.d)).join("")}</tbody></table></div><p class="note">${rows.some(x => x.d) ? `Week shown: ${rows.find(x => x.d).d.series.weeks[rows.find(x => x.d).d.week]}` : ""}${rows.some(x => x.d?.partial) ? " · ⚠ = only partly inside the study area" : ""} (change it with the date slider in the Explorer). Click a row to open the field.</p>`;
   box.querySelectorAll("tr[data-k]").forEach(tr => tr.onclick = e => {
     if (e.target.dataset.rm) return;
-    const f = ST.fields.find(x => key(x) === tr.dataset.k); openField(f);
+    const f = ST.fields.find(x => key(x) === tr.dataset.k); openField(f).catch(() => {});
   });
   box.querySelectorAll("button[data-rm]").forEach(b => b.onclick = () => remove(ST.fields.find(x => key(x) === b.dataset.rm)));
 }
@@ -100,12 +105,14 @@ export async function render() {
 async function openField(f) {
   const d = await loadSeason(f.area, f.year), s = d.series.fields[f.id];
   const geo = d.geo.features.find(x => x.properties.id === f.id);
+  if (!s || !geo) { document.getElementById("mf-detail").innerHTML = `<p class="note">Data for field ${f.id} (${f.area} ${f.year}) are not available.</p>`; return; }
   const pb = await pixelBlock(f.area, f.year, f.id);
   CUR = { ...f, pb, s, geo, weeks: d.series.weeks, rgb: d.rgb };
   render();
   const arable = ARABLE.has(s.group), rates = ST.rates[f.id] || ["", "", ""];
   const det = document.getElementById("mf-detail");
   det.innerHTML = `<h2>Field ${f.id} · ${geo.properties.crop}</h2><div class="note">${s.group} · ${geo.properties.ha} ha · season ${f.year}</div>
+    ${geo.properties.partial ? '<p><span class="pill bad">only partly inside the study area: maps and zones cover the inside part only; exports disabled</span></p>' : ""}
     <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px">
       <div><canvas id="mf-rgb" width="220" height="220" style="width:100%"></canvas><div class="note" id="mf-rgb-cap"></div></div>
       <div><canvas id="mf-lai" width="220" height="220" style="width:100%"></canvas><div class="note" id="mf-lai-cap"></div></div>
@@ -132,9 +139,9 @@ async function openField(f) {
 }
 
 function exportsEnabled() {
-  const r = ST.rates[CUR.id] || [], ok = r.length === 3 && r.every(v => v !== "" && isFinite(v));
+  const { ok, msg } = exportCheck({ rates: ST.rates[CUR.id] || [], partial: !!CUR.geo.properties.partial });
   ["mf-iso", "mf-gis"].forEach(i => { const b = document.getElementById(i); if (b) b.disabled = !ok; });
-  const m = document.getElementById("mf-msg"); if (m) m.textContent = ok ? "" : "Set a rate for every zone to enable the exports.";
+  const m = document.getElementById("mf-msg"); if (m) m.textContent = msg;
 }
 
 function currentZones() {
@@ -160,7 +167,7 @@ function paint() {
     ctx.imageSmoothingEnabled = false; ctx.clearRect(0, 0, c.width, c.height);
     ctx.drawImage(img, c0, r0, ww, h, 0, 0, ww * sc, h * sc);
   };
-  img.src = `${BASE}${CUR.area}_${CUR.year}/rgb/${d}.jpg`;
+  img.src = url(`${CUR.area}_${CUR.year}/rgb/${d}.jpg`);
   document.getElementById("mf-rgb-cap").textContent = `Sentinel-2, ${d}`;
 }
 

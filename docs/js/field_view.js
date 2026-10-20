@@ -1,15 +1,17 @@
 // Field level in the EXPLORER: zoom from districts to the NRW study areas, fields and 10 m pixels.
 // Uses the globals of the district app (S, META, GEO, d3, css, fmt, rowFor, cropData, drawMap, drawPanel, doyDate, LEADS).
-import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, clearRgbDate, fmtUnc, affineFromCorners, leavesField } from "./field_core.js";
+import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, clearRgbDate, fmtUnc, affineFromCorners, leavesField,
+         fieldUrl, noDataReason, zoomAllowed, areaToEnter } from "./field_core.js";
 
 const BASE = "field/";
 const ENTER_K = 40;                                   // zoom factor at which an area switches to fields
 const GROUP_CROP = { wheat: "winter_wheat", barley: "winter_barley", maize: "silage_maize", potato: "potato" };
 const CROP_GROUP = { winter_wheat: "wheat", winter_barley: "barley", silage_maize: "maize", grain_maize: "maize", potato: "potato" };
-export const FV = { idx: null, districts: {}, active: false, area: null, year: null, geo: null, series: null, rgb: [],
+export const FV = { v: null, idx: null, districts: {}, active: false, area: null, year: null, geo: null, series: null, rgb: [],
                     week: 0, layer: "lai", sel: null, cache: {} };
 
-const getJ = p => fetch(BASE + p).then(r => { if (!r.ok) throw new Error(p); return r.json(); });
+export const url = p => fieldUrl(BASE, p, FV.v);                // ?v=<data version> on every field file
+const getJ = (p, opt) => fetch(url(p), opt).then(r => { if (!r.ok) throw new Error(p); return r.json(); });
 const proj = () => d3.geoMercator().fitSize([560, 720], GEO);
 
 export async function loadSeason(area, year) {
@@ -34,19 +36,36 @@ function defaultWeek(weeks) {
 }
 
 export async function initField() {
-  try { FV.idx = await getJ("index.json"); } catch (e) { return; }
+  try { FV.idx = await fetch(BASE + "index.json", { cache: "no-store" }).then(r => r.json()); } catch (e) { return; }
+  FV.v = FV.idx.version || null;
   FV.districts = await getJ("districts.json").catch(() => ({}));
   const svg = d3.select("#map");
-  const zoom = d3.zoom().scaleExtent([1, 600]).on("zoom", e => {
-    d3.select("#mapg").attr("transform", e.transform);
-    if (leavesField({ active: FV.active, k: e.transform.k, user: !!e.sourceEvent, enterK: ENTER_K })) leaveField();
-  });
+  const zoom = d3.zoom().scaleExtent([1, 600]).translateExtent([[0, 0], [560, 720]])
+    .filter(e => zoomAllowed({ type: e.type, ctrlKey: e.ctrlKey, touches: e.touches?.length, button: e.button,
+                                k: d3.zoomTransform(svg.node()).k, field: FV.active }))
+    .on("zoom", e => {
+      d3.select("#mapg").attr("transform", e.transform);
+      if (leavesField({ active: FV.active, k: e.transform.k, user: !!e.sourceEvent, enterK: ENTER_K })) leaveField();
+      else if (!FV.active && e.sourceEvent && !FV.entering) {               // zooming into a study area opens it
+        const a = areaToEnter({ k: e.transform.k, enterK: ENTER_K, centre: e.transform.invert([280, 360]), boxes: areaBoxes() });
+        if (a) enterField(a);
+      }
+    });
   svg.call(zoom).on("dblclick.zoom", null);
   FV.zoom = zoom;
   drawAreas();
   const sel = document.getElementById("fieldlayer");
   sel.onchange = e => { FV.layer = e.target.value; drawFields(); };
   window.FIELDMODE = { get active() { return FV.active; }, onSlide: i => { FV.week = i; label(); drawFields(); if (FV.sel) fieldPanel(FV.sel); } };
+}
+
+function areaBoxes() {
+  const p = proj(), out = {};
+  for (const a of Object.keys(FV.idx.areas)) {
+    const [ul, ur, ll] = FV.idx.areas[a].corners_wgs84, lr = [ur[0] + ll[0] - ul[0], ur[1] + ll[1] - ul[1]];
+    out[a] = [ul, ur, lr, ll].map(c => p(c));
+  }
+  return out;
 }
 
 function areaPath(a) {
@@ -64,9 +83,13 @@ export function drawAreas() {
 }
 
 export async function enterField(area) {
-  FV.area = area; FV.year = seasonFor(area); FV.active = true;
+  const year = seasonFor(area);
+  let d;
+  FV.entering = true;
+  try { d = await loadSeason(area, year); } catch (e) { FV.entering = false; return; }   // data missing: stay on districts
+  FV.entering = false;
+  FV.area = area; FV.year = year; FV.active = true;
   d3.select("#mapg").classed("fieldmode", true);              // districts in neutral grey: no forecast colour behind field gaps
-  const d = await loadSeason(area, FV.year);
   FV.geo = d.geo; FV.series = d.series; FV.rgb = d.rgb;
   FV.week = defaultWeek(FV.series.weeks);
   const p = proj(), [ul, ur, ll] = FV.idx.areas[area].corners_wgs84;
@@ -124,7 +147,7 @@ export function drawFields() {
   const [ul, ur, ll] = FV.idx.areas[FV.area].corners_wgs84.map(c => p(c));
   const m = affineFromCorners(ul, ur, ll, 800, 800);
   const pix = FV.layer === "lai" || FV.layer === "ndvi";
-  g.selectAll("image.ov").data(pix ? [`${BASE}${k}/${FV.layer}/${wk}.png`] : [])
+  g.selectAll("image.ov").data(pix ? [url(`${k}/${FV.layer}/${wk}.png`)] : [])
     .join("image").attr("class", "ov").attr("href", d => d).attr("width", 800).attr("height", 800)
     .attr("transform", `matrix(${m.join(",")})`).style("image-rendering", "pixelated");
   const path = d3.geoPath(p);
@@ -137,6 +160,7 @@ export function drawFields() {
 }
 
 function curve(s) {
+  if (!s.lai.some(v => v != null)) return `<p class="note">${noDataReason(s.src, 0) || "No value this season"}.</p>`;
   const W = 460, H = 170, L = 34, R = 10, T = 10, B = 24, n = FV.series.weeks.length;
   const x = d3.scaleLinear().domain([0, n - 1]).range([L, W - R]);
   const y = d3.scaleLinear().domain([0, Math.max(4, d3.max(s.lai.map((v, i) => (v ?? 0) + (s.lai_unc[i] ?? 0))))]).nice().range([H - B, T]);
@@ -190,7 +214,7 @@ function paintRgb(s) {
     ctx.strokeStyle = "#f2a93b"; ctx.lineWidth = 2;
     ctx.strokeRect((c.width - dw) / 2 + (c0 - sx) * sc, (c.height - dh) / 2 + (r0 - sy) * sc, (c1 - c0) * sc, (r1 - r0) * sc);
   };
-  img.src = `${BASE}${FV.area}_${FV.year}/rgb/${d}.jpg`;
+  img.src = url(`${FV.area}_${FV.year}/rgb/${d}.jpg`);
 }
 
 export async function fieldPanel(id) {
@@ -204,6 +228,7 @@ export async function fieldPanel(id) {
     <div class="note">${P.group} · ${fmt(P.ha, 2)} ha · season ${FV.year} · week of ${wk} · re-analysis (past season)</div>
     ${P.partial ? '<p><span class="pill bad">only partly inside the study area: values cover the inside part</span></p>' : ""}
     ${s.season[w] ? "" : '<p><span class="pill">before sowing / after harvest: previous crop, cover crop or bare soil</span></p>'}
+    ${noDataReason(s.src, w) ? `<p class="note">No value this week: ${noDataReason(s.src, w)}.</p>` : ""}
     <div class="kpis">
       <div class="kpi"><div class="k">Green LAI</div><div class="v">${fmtUnc(s.lai[w], s.lai_unc[w], 1)}</div><div class="s">m²/m² · typical error of a 10 m value</div></div>
       <div class="kpi"><div class="k">NDVI</div><div class="v">${fmtUnc(s.ndvi[w], s.ndvi_unc[w], 2)}</div><div class="s">${s.ndvi_src[w] === 1 ? "± assumed sensor noise" : "± typical error"}</div></div>

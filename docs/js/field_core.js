@@ -21,6 +21,60 @@ export function leavesField({ active, k, user, enterK }) {
   return active && user && k < enterK / 2;
 }
 
+// every field file URL carries the data version from index.json: field files are cached for a week, so a rebuild
+// must never mix a new px.json with old px.bin bytes
+export function fieldUrl(base, path, v) {
+  return v ? `${base}${path}?v=${v}` : `${base}${path}`;
+}
+
+// why a week has no value (src 0), or null when it has one
+export function noDataReason(src, w) {
+  if (src[w] !== 0) return null;
+  const first = src.indexOf(1);
+  if (first < 0) return "no clear Sentinel-2 image of this field this season";
+  if (w < first) return "before the first clear Sentinel-2 image";
+  return "no value this week";
+}
+
+// d3-zoom filter: on the district map plain scrolling and one-finger swipes stay page scrolling (district map unchanged);
+// ctrl + scroll or a pinch zooms; dragging pans only once zoomed in; inside the field view the map takes the gestures
+export function zoomAllowed({ type, ctrlKey, touches, button, k, field }) {
+  if (type === "wheel") return field || !!ctrlKey;
+  if (type.startsWith("touch")) return field || (touches ?? 0) >= 2 || k > 1.01;
+  if (type === "mousedown") return (button ?? 0) === 0 && (field || k > 1.01);
+  return false;
+}
+
+// zooming in (k at least a quarter of the field zoom) with the view centre inside a study area opens that area
+export function areaToEnter({ k, enterK, centre, boxes }) {
+  if (k < enterK / 4) return null;
+  const [x, y] = centre;
+  for (const [a, poly] of Object.entries(boxes)) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i], [xj, yj] = poly[j];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    if (inside) return a;
+  }
+  return null;
+}
+
+// median green LAI of the fields of one crop group in week w (null if none)
+export function groupMedian(fields, group, w) {
+  const v = Object.values(fields).filter(f => f.group === group && f.lai[w] != null).map(f => f.lai[w]).sort((a, b) => a - b);
+  if (!v.length) return null;
+  const m = Math.floor(v.length / 2);
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+}
+
+// zone exports need a rate per zone and a field fully inside the study area (the grid would cover only the inside part)
+export function exportCheck({ rates, partial }) {
+  if (partial) return { ok: false, msg: "This field is only partly inside the study area: exports are disabled (they would cover the inside part only)." };
+  const ok = Array.isArray(rates) && rates.length === 3 && rates.every(v => v !== "" && v != null && isFinite(v));
+  return ok ? { ok: true, msg: "" } : { ok: false, msg: "Set a rate for every zone to enable the exports." };
+}
+
 // a difference smaller than the uncertainty is "within noise"
 export function withinNoise(diff, unc) {
   return Math.abs(diff) < unc;
@@ -66,7 +120,8 @@ export function loadMyFields(storage) {
     if (!s) return EMPTY();
     const v = JSON.parse(s);
     if (!v || !Array.isArray(v.fields) || typeof v.rates !== "object" || v.rates === null) return EMPTY();
-    return { fields: v.fields, rates: v.rates };
+    const good = f => f && typeof f.area === "string" && Number.isInteger(f.year) && Number.isFinite(f.id);
+    return { fields: v.fields.filter(good), rates: v.rates };
   } catch (e) {
     return EMPTY();
   }

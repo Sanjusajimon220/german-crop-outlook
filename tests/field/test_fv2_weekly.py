@@ -29,3 +29,25 @@ def test_no_clear_value_gives_missing():
     assert np.isnan(v) and src == 0
     v, u, src, gap = W.assign_week(days, vals, sd, -10)
     assert np.isnan(v) and src == 0
+
+
+def test_weekly_matches_assign_week():
+    """Integration (real data, pilot 2024): the vectorised weekly series picks the same source, gap and (for measured
+    and line weeks) the same value as the pure assign_week rule, on 300 random pixels."""
+    import os
+    from areas import out_dir
+    weeks = W.mondays(2024)
+    z = np.load(os.path.join(out_dir("pilot", 2024), W.OUTFILE))
+    S = W.season_on_weeks("pilot", 2024, "lai", weeks)
+    s2 = S.s2_rows
+    rng = np.random.default_rng(1)
+    for j in rng.choice(S.Y.shape[1], 300, replace=False):
+        ok = np.isfinite(S.Y[s2, j])
+        days, vals = S.days[s2][ok], S.Y[s2, j][ok]
+        for w, wd in enumerate(weeks):
+            v, _, src, gap = W.assign_week(days, vals, np.zeros(len(vals)), S.days[S.dates.get_loc(wd)])
+            assert z["lai_src"][w, j] == src, (j, str(wd.date()))
+            if src in (W.SRC_LINE, W.SRC_RADAR):
+                assert z["lai_gap"][w, j] == gap, (j, str(wd.date()))
+            if src in (W.SRC_MEASURED, W.SRC_LINE):
+                assert abs(z["lai"][w, j] - max(v, 0)) < 1e-4, (j, str(wd.date()))

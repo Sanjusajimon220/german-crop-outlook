@@ -57,3 +57,29 @@ def test_export_redone_unless_complete(tmp_path, monkeypatch):
         X.export("nowhere", 2024)
     (d / ".complete").write_text("")
     assert X.export("nowhere", 2024) is None
+
+
+def test_off_season_winter_frost_dip_is_not_sowing():
+    # review 2026-10-20: stubble in October, crop 0.2-0.3 from November, a frost-affected dip to 0.08 in February
+    lai = [0.1, 0.1, 0.1, 0.1, 0.2] + [0.3] * 13 + [0.08] + [0.4, 0.8, 1.5, 2.5, 3.5, 4.0, 4.0, 3.5, 2.5, 1.0, 0.4] + [0.3] * 18
+    m = X.season_mask(lai, "wheat")
+    assert m[5] == 1 and m[17] == 1               # November to January is the wheat, not 'before sowing'
+    assert m[25] == 1
+
+
+def test_off_season_spring_crop_cover_crop_is_not_the_crop():
+    # review 2026-10-20: bare after the October harvest, winter cover crop, then maize from June
+    lai = [0.02] * 4 + [0.6, 0.8, 1.0, 1.0, 0.9, 0.8] + [0.8] * 12 + [0.6, 0.4, 0.2, 0.15, 0.15, 0.2, 0.3] + \
+          [0.6, 1.2, 2.0, 3.0, 3.5, 3.5, 3.0, 2.5] + [2.0] * 9
+    m = X.season_mask(lai, "maize")
+    assert m[6] == 0 and m[15] == 0               # cover crop in winter is not the maize
+    assert m[30] == 1                             # maize in summer
+
+
+def test_index_carries_a_data_version(tmp_path, monkeypatch):
+    # review 2026-10-20: field files are cached for a week; the app appends ?v=<version> so a rebuild never mixes files
+    import json
+    monkeypatch.setattr(X, "DOCS", str(tmp_path))
+    X.write_index()
+    v = json.load(open(tmp_path / "index.json"))["version"]
+    assert isinstance(v, str) and len(v) >= 8

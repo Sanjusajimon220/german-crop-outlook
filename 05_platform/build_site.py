@@ -16,6 +16,9 @@ HEADERS = """
 
 
 def build_site(src="D:/german-crop-outlook-field/docs", site="D:/groundtruth-earth-site", backup_root="D:/groundtruth-earth-site-backup"):
+    for need in ("index.html", os.path.join("data", "meta.json"), os.path.join("field", "index.json")):
+        if not os.path.exists(os.path.join(src, need)):                 # check BEFORE touching the live folder
+            raise FileNotFoundError(f"source incomplete, live site left unchanged: {need} missing in {src}")
     dest = os.path.join(site, "crop-outlook")
     backup = None
     if os.path.exists(dest):
