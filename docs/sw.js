@@ -2,7 +2,7 @@
 // App shell and district data are stored at install; field files are stored as they are viewed (their URLs carry
 // ?v=<data version>, so a data rebuild never mixes old and new files); px.bin range requests are answered from a stored
 // full copy. A new APP_VERSION replaces the old caches on the next visit.
-const APP_VERSION = "2026-10-21a";
+const APP_VERSION = "2026-10-21c";
 const SHELL = `shell-${APP_VERSION}`, FIELD = "field-data", CDN = "cdn-libs";
 const SHELL_FILES = ["./", "./index.html", "./manifest.webmanifest", "./js/field_core.js", "./js/field_view.js", "./js/my_fields.js",
   "./js/isoxml.js", "./js/field_accuracy.js", "./icons/icon-192.png", "./icons/icon-512.png", "./data/meta.json", "./data/districts.geojson",

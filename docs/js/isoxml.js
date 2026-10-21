@@ -2,7 +2,7 @@
 // zones.classes are in ISO grid order: row 0 = southernmost row, columns west -> east; -1 = outside the field.
 // rates: kg/ha per zone class [class 0, class 1, class 2]; written as mg/m2 (kg/ha x 100), DDI 0006.
 
-export function buildTaskData({ field, zones, rates, grid }) {
+export function buildTaskData({ field, zones, rates, grid, product = "Fertiliser (rate set by user)" }) {
   const { rows, cols } = grid;
   const bin = new Uint8Array(rows * cols * 4);
   const view = new DataView(bin.buffer);
@@ -13,7 +13,7 @@ export function buildTaskData({ field, zones, rates, grid }) {
   const def = Math.round(Math.max(...rates) * 100);
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <ISO11783_TaskData VersionMajor="4" VersionMinor="2" ManagementSoftwareManufacturer="Groundtruth-earth" ManagementSoftwareVersion="1.0" DataTransferOrigin="1">
-<PDT A="PDT1" B="Fertiliser (rate set by user)"/>
+<PDT A="PDT1" B="${product.replace(/[<>&"]/g, "")}"/>
 <TSK A="TSK1" B="Field ${field.id} zones" G="1">
 <TZN A="1" B="grid">
 <PDV A="0006" B="${def}" C="PDT1"/>

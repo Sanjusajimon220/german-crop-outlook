@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc , leavesField, clearRgbDate, fieldUrl, noDataReason, zoomAllowed, areaToEnter, groupMedian, exportCheck, fieldRgbDate, areaRgbDate, legendSpec, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames } from "../../docs/js/field_core.js";
+import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc , leavesField, clearRgbDate, fieldUrl, noDataReason, zoomAllowed, areaToEnter, groupMedian, exportCheck, fieldRgbDate, areaRgbDate, legendSpec, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS } from "../../docs/js/field_core.js";
 
 const weeks = ["2024-05-20", "2024-05-27", "2024-06-03"];
 
@@ -204,4 +204,34 @@ test("cropStyle: register names of small crops and landscape elements are shown 
     ["Unbefestigte Mieten AL", "Field clamp"], ["Kernobst z.B. Äpfel, Birnen", "Pome fruit"]];
   for (const [crop, label] of cases) assert.equal(cropStyle("other", crop).label, label, crop);
   assert.equal(cropStyle("other cereal", "Wintermenggetreide").label, "Mixed cereals");
+});
+
+test("zoneSummary: reliability, size of the difference and likely cause in plain words", () => {
+  const s = zoneSummary({ held: 4, tests: 5, spread: 0.08, seasons: 5, slope: 0.8, twi: -0.6, nfk: -12 });
+  assert.equal(s.reliability, "reliable");
+  assert.match(s.lines[0], /4 of 5 seasons/);
+  assert.match(s.lines[1], /8 %/);
+  assert.ok(s.lines.some(l => /drier/.test(l)) && s.lines.some(l => /steeper/.test(l)) && s.lines.some(l => /less plant-available water/.test(l)));
+  const flat = zoneSummary({ held: 2, tests: 4, spread: 0.03, seasons: 4 });
+  assert.equal(flat.uniform, true);
+  assert.equal(flat.reliability, "weak");
+  assert.match(flat.lines[1], /fairly uniform/);
+  assert.match(flat.lines[2], /No clear soil or terrain pattern/);
+  assert.equal(zoneSummary(null), null);
+});
+
+test("zoneAreas: hectares per zone from 10 m pixels (0.01 ha each); one zone puts everything in the middle", () => {
+  assert.deepEqual(zoneAreas([0, 0, 1, 2, 2, 2, -1], 3), [0.02, 0.01, 0.03]);
+  assert.deepEqual(zoneAreas([0, 2, 1], 1), [0, 0.03, 0]);
+});
+
+test("zoneTotal: total amount for the field, only when every zone has a rate", () => {
+  assert.equal(zoneTotal([2.9, 4.6, 2.9], [150, 160, 170]), 2.9 * 150 + 4.6 * 160 + 2.9 * 170);
+  assert.equal(zoneTotal([2.9, 4.6, 2.9], [150, "", 170]), null);
+  assert.equal(PRODUCTS.nitrogen.unit, "kg N/ha");
+});
+
+test("zoneAreas: edge pixels count with their share of the field", () => {
+  assert.deepEqual(zoneAreas([0, 1, 2, 2], 3, 0.01, [1, 0.5, 1, 0.2]), [0.01, 0.005, 0.012]);
+  assert.deepEqual(zoneAreas([2, 2, 2, 2], 3, 0.01, [1, 1, 1, 0.5]), [0, 0, 0.035]);
 });

@@ -27,3 +27,9 @@ test("cells outside the field get rate 0", () => {
   const { bin } = buildTaskData(args);
   assert.equal(new DataView(bin.buffer).getInt32(4 * 11, true), 0);
 });
+
+test("buildTaskData: the product the user chose is named in the task file", () => {
+  const { xml } = buildTaskData({ ...args, product: "Nitrogen (kg N/ha)" });
+  assert.match(xml, /<PDT A="PDT1" B="Nitrogen \(kg N\/ha\)"\/>/);
+  assert.match(buildTaskData(args).xml, /B="Fertiliser \(rate set by user\)"/);   // default unchanged
+});

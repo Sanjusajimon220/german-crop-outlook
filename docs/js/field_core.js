@@ -304,3 +304,38 @@ export function invertAffine(m) {
   const [a, b, c, d, e, f] = m, det = a * d - b * c;
   return [d / det, -b / det, -c / det, a / det, (c * f - d * e) / det, (b * e - a * f) / det];
 }
+
+// Module A: plain-language summary of a field's 5-season zones (meta from field/<area>_2025/zones.json)
+export function zoneSummary(m) {
+  if (!m || !m.tests) return null;
+  const share = m.held / m.tests, reliability = share >= 0.8 ? "reliable" : share >= 0.6 ? "fairly reliable" : "weak";
+  const uniform = m.spread < 0.05;
+  const lines = [`The zone order held in ${m.held} of ${m.tests} seasons it was not built from (${reliability}).`,
+    uniform ? `This field is fairly uniform: the zones differ by less than 5 % in growth, so variable rates bring little here.`
+            : `The strong zone grew about ${Math.round(m.spread * 100)} % more than the weak zone (season total of green leaf).`];
+  const cause = [];
+  if (m.twi != null && m.twi <= -0.3) cause.push("the weak zone lies on the drier, upper or convex part of the field");
+  if (m.twi != null && m.twi >= 0.3) cause.push("the weak zone lies in a wetter, lower part where water may stand");
+  if (m.slope != null && m.slope >= 0.5) cause.push("the weak zone is steeper");
+  if (m.nfk != null && m.nfk <= -10) cause.push("the soil map shows less plant-available water in the weak zone");
+  if (m.nfk != null && m.nfk >= 10) cause.push("the soil map shows more plant-available water in the weak zone, so other causes are likely");
+  lines.push(cause.length ? `Likely reason: ${cause.join("; ")}.`
+    : "No clear soil or terrain pattern; other causes (management, compaction, old field boundaries) are possible.");
+  return { reliability, uniform, lines };
+}
+
+// variable-rate products the user can choose (only the label and unit change; the rates are always the user's)
+export const PRODUCTS = { nitrogen: { label: "Nitrogen", unit: "kg N/ha" }, seed: { label: "Seed", unit: "kg/ha" }, other: { label: "Other product", unit: "kg/ha" } };
+
+// hectares per zone (weak, middle, strong) from the field's 10 m pixels; with one zone everything counts as middle
+export function zoneAreas(classes, n, pixelHa = 0.01, weights = null) {
+  const a = [0, 0, 0];
+  classes.forEach((c, i) => { if (c >= 0) a[n === 1 ? 1 : c] += pixelHa * (weights ? weights[i] : 1); });
+  return a.map(v => Math.round(v * 1000) / 1000);
+}
+
+// total amount for the field (kg); null until every zone has a rate
+export function zoneTotal(areas, rates) {
+  if (!rates || rates.some(v => v === "" || v == null || !isFinite(v))) return null;
+  return areas.reduce((s, a, i) => s + a * Number(rates[i]), 0);
+}

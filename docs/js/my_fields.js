@@ -1,7 +1,7 @@
 // MY FIELDS: fields picked on the map (kept in this browser, no accounts), list + map, zones, rates, exports.
 import { loadMyFields, saveMyFields, zones, fmtUnc, sourceLabel, withinNoise, nearestRgbDate, clearRgbDate,
          affineFromCorners, invertAffine, applyAffine, groupMedian, exportCheck, noDataReason, fieldRgbDate,
-         seriesChart, SOURCE_COLOURS, legendSpec, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames } from "./field_core.js";
+         seriesChart, SOURCE_COLOURS, legendSpec, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS } from "./field_core.js";
 const badge = (g, c) => { const k = cropStyle(g, c); return `<span class="crop" style="--c:${k.colour}"><i></i>${k.label}</span>`; };
 
 import { buildTaskData } from "./isoxml.js";
@@ -18,6 +18,18 @@ const AREA_NAMES = { pilot: "Pilot · Düren", selhausen: "Selhausen", north: "N
 const AV = { area: "pilot", year: 2025, crop: null, geo: null, series: null, view: "crops", frame: 0, step: "month", timer: null, metric: "lai", sel: new Set() };   // the study area shown
 const NOVAL = "#3a4157";                     // field pixel without a value yet (before its first clear image)
 const PXIDX = {};
+const MZ = {};                               // 5-season zones per area (Module A): { meta, img }
+const MZ_SEASON = 2025;
+const PROD_KEY = "cropOutlook.myFields.products";       // product chosen per field (label and unit of the rates)
+function products() { try { return JSON.parse(window.localStorage.getItem(PROD_KEY)) || {}; } catch (e) { return {}; } }
+function setProduct(id, k) { const p = products(); p[id] = k; try { window.localStorage.setItem(PROD_KEY, JSON.stringify(p)); } catch (e) { /* blocked */ } }
+const productOf = id => PRODUCTS[products()[id]] ? products()[id] : "nitrogen";
+
+async function multiZones(area) {
+  if (!MZ[area]) MZ[area] = Promise.all([fetch(url(`${area}_${MZ_SEASON}/zones.json`)).then(r => r.json()), areaPng(`${area}_${MZ_SEASON}/zones.png`)])
+    .then(([meta, img]) => ({ meta, img })).catch(() => null);
+  return MZ[area];
+}
 
 function safeStorage() { try { return window.localStorage; } catch (e) { return null; } }
 function persist() { try { saveMyFields(window.localStorage, ST); } catch (e) { /* storage blocked: keep in memory */ } }
@@ -117,7 +129,8 @@ async function openField(f) {
   if (!s || !geo) { document.getElementById("mf-detail").innerHTML = `<p class="note">Data for field ${f.id} (${f.area} ${f.year}) are not available.</p>`; return; }
   const pb = await pixelBlock(f.area, f.year, f.id);
   const w0 = Math.max(0, d.series.weeks.findIndex(x => x >= (FV.active && FV.year === f.year ? d.series.weeks[FV.week] : `${f.year}-05-20`)));
-  CUR = { ...f, pb, s, geo, weeks: d.series.weeks, rgb: d.rgb, week: w0, layer: "lai", tab: CUR?.tab || "overview" };
+  const mz = f.year === MZ_SEASON ? await multiZones(f.area) : null, zm = mz?.meta.fields[String(f.id)] || null;
+  CUR = { ...f, pb, s, geo, weeks: d.series.weeks, rgb: d.rgb, week: w0, layer: "lai", tab: CUR?.tab || "overview", mz, zm, zmode: zm ? "multi" : "period" };
   render();
   const arable = ARABLE.has(s.group), rates = ST.rates[f.id] || ["", "", ""];
   const det = document.getElementById("mf-detail"), cs = cropStyle(s.group, geo.properties.crop), saved = ST.fields.some(x => key(x) === key(f));
@@ -145,11 +158,22 @@ async function openField(f) {
       <p class="note">${src}<br>Band: ± typical error. Shaded weeks: before sowing / after harvest. Dashed: selected week (Overview slider).</p>
     </div>
     <div data-pane="zones">
-    ${arable ? `<p><label>From <input type="date" id="mf-from" value="${f.year}-04-01"></label> <label>to <input type="date" id="mf-to" value="${f.year}-06-30"></label></p>
-    <p class="note">Zones = thirds of the field by mean green LAI over the period (shown on the Overview map with "Zones"). Rates are yours (kg/ha); the platform supplies the zones.</p>
-    <p>${["weak", "mid", "strong"].map((n, i) => `<label style="margin-right:10px;white-space:nowrap"><span style="display:inline-block;width:10px;height:10px;background:${ZCOL[i]};border-radius:2px"></span> ${n} <input type="number" min="0" max="400" step="1" style="width:70px" data-z="${i}" value="${rates[i]}"> kg/ha</label>`).join("")}</p>
-    <p><button id="mf-iso" class="pill">Export ISO-XML</button> <button id="mf-gis">Export GIS (GeoJSON)</button> <button id="mf-print">Print report</button></p>
-    <p class="note" id="mf-msg"></p>` : `<p class="note">Zones and exports are offered for arable crops only (this field: ${cs.label}).</p>`}
+    ${arable ? `<h4 class="step">① Check the zones</h4>
+    ${CUR.zm ? `<p><span class="seg">${[["multi", "5 seasons (2021–2025)"], ["period", "This season, chosen period"]].map(([k, t]) => `<button data-zmode="${k}" class="${k === CUR.zmode ? "on" : ""}">${t}</button>`).join("")}</span></p>` : ""}
+    <p id="mf-period" ${CUR.zmode === "multi" ? "hidden" : ""}><label>From <input type="date" id="mf-from" value="${f.year}-04-01"></label> <label>to <input type="date" id="mf-to" value="${f.year}-06-30"></label></p>
+    <div id="mf-zsum"></div>
+    <canvas id="mf-zmap" width="360" height="220" style="width:100%;background:var(--bg);border-radius:8px;border:1px solid var(--line)"></canvas>
+    <div class="legend" id="mf-zleg"></div>
+    <h4 class="step">② Enter a rate for each zone</h4>
+    <p><label>Product <select id="mf-prod">${Object.entries(PRODUCTS).map(([k, v]) => `<option value="${k}" ${k === productOf(f.id) ? "selected" : ""}>${v.label} (${v.unit})</option>`).join("")}</select></label></p>
+    <p><label>Same rate for all zones <input type="number" min="0" max="400" step="1" id="mf-all" style="width:70px"></label> <button id="mf-all-btn">Apply</button></p>
+    <p>${["weak", "middle", "strong"].map((n, i) => `<label style="margin-right:10px;white-space:nowrap"><span style="display:inline-block;width:10px;height:10px;background:${ZCOL[i]};border-radius:2px"></span> ${n} <input type="number" min="0" max="400" step="1" style="width:70px" data-z="${i}" value="${rates[i]}"> <span class="unit">${PRODUCTS[productOf(f.id)].unit}</span></label>`).join("")}</p>
+    <p class="note" id="mf-total"></p>
+    <p class="note" id="mf-znote"></p>
+    <h4 class="step">③ Export for your tractor terminal or GIS</h4>
+    <p><button id="mf-iso">Export ISO-XML (tractor terminal)</button> <button id="mf-gis">Export GIS (GeoJSON)</button> <button id="mf-print">Print report</button></p>
+    <p class="note" id="mf-msg"></p>
+    <p class="note">ISO-XML: copy the unzipped TASKDATA folder to a USB stick and load it in the terminal (ISOBUS task controller); the spreader then changes the rate by zone while driving.</p>` : `<p class="note">Zones and exports are offered for arable crops only (this field: ${cs.label}).</p>`}
     </div>
     ${attribution()}`;
   const showTab = t => { CUR.tab = t; det.querySelectorAll("[data-pane]").forEach(p => { p.hidden = p.dataset.pane !== t; }); det.querySelectorAll("button[data-tab]").forEach(b => b.classList.toggle("on", b.dataset.tab === t)); };
@@ -162,11 +186,22 @@ async function openField(f) {
   document.getElementById("mf-week").oninput = e => { CUR.week = +e.target.value; paint(); };
   paint();
   if (!arable) return;
-  ["mf-from", "mf-to"].forEach(i => document.getElementById(i).onchange = paint);
-  det.querySelectorAll("input[data-z]").forEach(inp => inp.oninput = () => {
-    const r = [...det.querySelectorAll("input[data-z]")].map(x => x.value === "" ? "" : +x.value);
-    ST.rates[f.id] = r; persist(); exportsEnabled();
+  ["mf-from", "mf-to"].forEach(i => document.getElementById(i).onchange = () => { paint(); zonePane(); });
+  det.querySelectorAll("button[data-zmode]").forEach(b => b.onclick = () => {
+    CUR.zmode = b.dataset.zmode; det.querySelectorAll("button[data-zmode]").forEach(x => x.classList.toggle("on", x === b));
+    document.getElementById("mf-period").hidden = CUR.zmode === "multi"; zoneText(); paint(); zonePane();
   });
+  zoneText(); zonePane();
+  const readRates = () => { ST.rates[f.id] = [...det.querySelectorAll("input[data-z]")].map(x => x.value === "" ? "" : +x.value); persist(); exportsEnabled(); zonePane(); };
+  det.querySelectorAll("input[data-z]").forEach(inp => inp.oninput = readRates);
+  document.getElementById("mf-all-btn").onclick = () => {
+    const v = document.getElementById("mf-all").value;
+    if (v === "") return;
+    det.querySelectorAll("input[data-z]").forEach(x => { x.value = v; }); readRates();
+  };
+  document.getElementById("mf-prod").onchange = e => {
+    setProduct(f.id, e.target.value); det.querySelectorAll(".unit").forEach(u => { u.textContent = PRODUCTS[e.target.value].unit; }); zonePane();
+  };
   document.getElementById("mf-iso").onclick = exportIso;
   document.getElementById("mf-gis").onclick = exportGis;
   document.getElementById("mf-print").onclick = () => window.print();
@@ -179,7 +214,34 @@ function exportsEnabled() {
   const m = document.getElementById("mf-msg"); if (m) m.textContent = msg;
 }
 
+// zone map, hectares per zone and the field total in the Zones tab
+function zonePane() {
+  const cv = document.getElementById("mf-zmap");
+  if (!cv) return;
+  const { z } = currentZones(), a = zoneAreas(z.classes, z.n, 0.01, CUR.pb.e.w), P = PRODUCTS[productOf(CUR.id)];
+  fieldCanvas(cv, CUR.pb, i => (z.classes[i] < 0 ? NOVAL : ZCOL[z.n === 1 ? 1 : z.classes[i]]));
+  document.getElementById("mf-zleg").innerHTML = ["weak", "middle", "strong"].map((t, i) => `<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${ZCOL[i]}"></span> ${t} ${a[i].toFixed(1)} ha</span>`).join(" ");
+  const tot = zoneTotal(a, ST.rates[CUR.id]);
+  document.getElementById("mf-total").textContent = tot == null ? "Total for this field: enter a rate for every zone."
+    : `Total for this field: ${Math.round(tot).toLocaleString("en-GB")} ${P.unit.startsWith("kg N") ? "kg N" : "kg"} on ${(a[0] + a[1] + a[2]).toFixed(1)} ha (average ${Math.round(tot / Math.max(0.01, a[0] + a[1] + a[2]))} ${P.unit}).`;
+}
+
+// the zone box above the rates: 5-season summary (Module A) or the one-season period note
+function zoneText() {
+  const sum = CUR.zmode === "multi" ? zoneSummary(CUR.zm) : null, box = document.getElementById("mf-zsum"), note = document.getElementById("mf-znote");
+  if (box) box.innerHTML = sum ? `<div class="card" style="padding:10px 12px;margin:6px 0"><b>Zones of consistent crop growth, ${CUR.mz.meta.seasons}</b>
+    <ul style="margin:6px 0 0 18px;padding:0">${sum.lines.map(l => `<li>${l}</li>`).join("")}</ul>
+    <p class="note" style="margin-top:6px">Built from ${CUR.zm.seasons} seasons of weekly green leaf area, relative to the field each year. They show where the crop grew better or worse, not measured yield; check them against your own knowledge of the field. Field edges (headlands) take the middle rate.</p></div>` : "";
+  if (note) note.textContent = CUR.zmode === "multi" ? "The rates are your decision; the platform only supplies the zones."
+    : "Zones = thirds of the field by mean green LAI over the period (shown on the Overview map with \"Zones\"). Rates are yours (kg/ha); the platform supplies the zones.";
+}
+
 function currentZones() {
+  if (CUR.zmode === "multi" && CUR.mz) {                 // Module A: 5-season zones; pixels without a zone (headland) -> middle
+    const { r, c, n } = CUR.pb.e, img = CUR.mz.img, classes = new Int8Array(n);
+    for (let i = 0; i < n; i++) { const v = img.data[4 * (r[i] * img.width + c[i])]; classes[i] = v ? Math.round(v / 85) - 1 : 1; }
+    return { z: { classes: Array.from(classes), n: 3 }, from: "2021", to: "2025" };
+  }
   const from = document.getElementById("mf-from")?.value || `${CUR.year}-04-01`, to = document.getElementById("mf-to")?.value || `${CUR.year}-06-30`;
   const mean = periodMean(CUR.pb, CUR.weeks, from, to);
   return { z: zones(Array.from(mean), CUR.pb.e.w), from, to };
@@ -221,7 +283,8 @@ async function paint() {
     const { z } = currentZones();
     fieldCanvas(map, pb, i => (z.classes[i] < 0 ? NOVAL : ZCOL[z.n === 1 ? 1 : z.classes[i]]));
     leg.innerHTML = ["weak", "mid", "strong"].map((t, i) => `<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${ZCOL[i]}"></span> ${t}</span>`).join(" ");
-    cap.textContent = z.n === 1 ? "One zone (field too small or too uniform)" : `${z.n} zones from the mean green LAI of the chosen period`;
+    cap.textContent = CUR.zmode === "multi" ? "3 zones of consistent crop growth, seasons 2021–2025 (field edges: middle)"
+      : z.n === 1 ? "One zone (field too small or too uniform)" : `${z.n} zones from the mean green LAI of the chosen period`;
   } else {
     const L = legendSpec(CUR.layer);
     if (CUR.layer === "lai") fieldCanvas(map, pb, i => { const v = pb.raw[w * n + i]; return v === pb.nodata ? NOVAL : d3.interpolateYlGn(0.05 + 0.95 * Math.min(1, v / pb.scale / L.max)); });
@@ -271,7 +334,8 @@ function lonLatGrid() {
 async function exportIso() {
   const g = lonLatGrid(), rates = ST.rates[CUR.id].map(Number);
   const zr = g.n === 1 ? [rates[1], rates[1], rates[1]] : rates;
-  const { xml, bin } = buildTaskData({ field: { id: CUR.id, crop: CUR.geo.properties.crop }, zones: { classes: g.classes, n: g.n }, rates: zr, grid: g.grid });
+  const P = PRODUCTS[productOf(CUR.id)];
+  const { xml, bin } = buildTaskData({ field: { id: CUR.id, crop: CUR.geo.properties.crop }, zones: { classes: g.classes, n: g.n }, rates: zr, grid: g.grid, product: `${P.label} (${P.unit})` });
   const zip = new JSZip();
   zip.file("TASKDATA/TASKDATA.XML", xml);
   zip.file("TASKDATA/GRD00001.BIN", bin);
@@ -286,7 +350,7 @@ function exportGis() {
     if (z.classes[i] < 0) continue;
     const ring = [[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]].map(([dx, dy]) => applyAffine(toLL, c[i] + dx, r[i] + dy).map(v => +v.toFixed(7)));
     const zc = z.n === 1 ? 1 : z.classes[i];
-    feats.push({ type: "Feature", properties: { field: CUR.id, zone: ["weak", "mid", "strong"][zc], rate_kg_ha: rates[zc], period: `${from}/${to}` },
+    feats.push({ type: "Feature", properties: { field: CUR.id, zone: ["weak", "mid", "strong"][zc], rate: rates[zc], product: PRODUCTS[productOf(CUR.id)].label, unit: PRODUCTS[productOf(CUR.id)].unit, period: `${from}/${to}` },
                  geometry: { type: "Polygon", coordinates: [ring] } });
   }
   const gj = { type: "FeatureCollection", name: `field_${CUR.id}_zones`, attribution: `Contains modified Copernicus Sentinel data ${CUR.year}; field boundaries Land NRW (dl-de/by-2-0)`, features: feats };
