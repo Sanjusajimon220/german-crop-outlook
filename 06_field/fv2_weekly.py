@@ -2,6 +2,7 @@
 
 Per pixel and Monday: measured (clear S2 value within +-3 days, nearest) > straight line (gap <= 30 d) > radar V2
 re-analysis (gap > 30 d; line instead if the area test did not adopt the design) > live V2 after the last clear image.
+LAI clear values flagged by fix 2 (single bad clear images) are treated as cloudy.
 Run `python fv2_weekly.py all` from D:\vista (resumable).
 """
 import numpy as np
@@ -54,6 +55,17 @@ from phase7_step3_s1proxy import prev_next
 MODELS = os.path.join("data", "processed", "field_v2", "models")
 UNC = os.path.join("data", "processed", "field_v2", "uncertainty_V2.json")
 OUTFILE = "weekly_pixels_V2.npz"
+FIX2_DIR = os.path.join("data", "processed", "field_v2", "benchmark")
+FIX2_TARGETS = {"lai"}                                         # fix 2 adopted for LAI only (project log 2026-10-21 12:25)
+
+
+def drop_flagged(Y, flags):
+    """Clear values flagged by fix 2 (single bad clear images) treated as cloudy; returns a copy."""
+    if flags.shape != Y.shape:
+        raise ValueError(f"fix-2 flags {flags.shape} do not match the season grid {Y.shape}")
+    out = Y.copy()
+    out[flags] = np.nan
+    return out
 
 
 def mondays(year):
@@ -63,6 +75,8 @@ def mondays(year):
 def season_on_weeks(area, year, target, weeks):
     """Season with nothing hidden, its date axis extended by the weekly Mondays (no values on those rows)."""
     S = F.Season(area, year, target, landsat=False, date_hide=True, hide_share=0.0)
+    if target in FIX2_TARGETS:
+        S.Y = drop_flagged(S.Y, np.load(os.path.join(FIX2_DIR, f"fix2_flags_{target}_{area}_{year}.npz"))["flags"])
     s2 = S.dates
     D = s2.union(weeks)
     Y = np.full((len(D), S.Y.shape[1]), np.nan, np.float32)

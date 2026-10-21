@@ -116,6 +116,12 @@ section[hidden],.ctl[hidden]{display:none}
 #map path.f.sel{stroke:var(--accent);stroke-opacity:1;stroke-width:2.2}
 @media print{header,nav,.controls,#page-explore,#page-accuracy,#page-method,#mf-list button,#mf-detail button,#mf-detail input[type=date]{display:none!important}
   #page-myfields{display:block!important} body{background:#fff;color:#000}}
+#acc-field svg.chart{width:100%;max-width:620px;height:auto;font:11px var(--f-mono);fill:var(--muted);color:var(--ink)}
+#acc-field svg .grid{stroke:var(--muted);stroke-opacity:.2} #acc-field svg .zero,#acc-field svg .diag{stroke:var(--ink);stroke-opacity:.6;stroke-dasharray:4 3}
+#acc-field .acc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:12px 24px;align-items:start}
+#acc-field .acc-grid.wide{grid-template-columns:repeat(auto-fit,minmax(min(440px,100%),1fr))} #acc-field h4{margin:10px 0 6px;font-size:14px} #acc-field ul{margin:6px 0 0 18px;padding:0} #acc-field li{margin:4px 0}
+#acc-field table.heat{border-collapse:collapse;font:12px var(--f-mono)} #acc-field table.heat td,#acc-field table.heat th{padding:5px 10px;border:1px solid var(--line);text-align:center}
+#acc-field table.heat td:first-child{text-align:left}
 .tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font:12px/1.5 var(--f-mono);box-shadow:0 2px 8px rgba(0,0,0,.25);display:none;z-index:2;max-width:280px}
 </style>
 
@@ -192,6 +198,7 @@ section[hidden],.ctl[hidden]{display:none}
   <div class="card" style="margin-top:16px"><h3>vs Destatis harvest reporters</h3><div class="tbl" id="tbl-destatis"></div>
     <p class="note">Destatis publishes its June estimate (wheat) at the end of July; the July/August and August/September figures come after the harvest and are close to measurements.</p></div>
   <div class="card" style="margin-top:16px"><h3>Districts: v10 vs previous model v9 (typical error, t/ha)</h3><div class="tbl" id="tbl-dist"></div></div>
+  <div id="acc-field"></div>
 </section>
 
 <section id="page-method" hidden>
@@ -203,7 +210,8 @@ section[hidden],.ctl[hidden]{display:none}
     <p><b>v12 (11 Oct 2026).</b> Same forecasts again. Barley ranges widened where the training years showed them too narrow (district x 1.19, national x 1.63). The Sentinel-2 correction was also tested on 2024, a year it had not seen, and made district errors worse in all five cases, so it stays out.</p>
     <p><b>Data.</b> DWD HYRAS weather, DWD stations, CM SAF SARAH-3 sunlight, BGR soils, DWD phenology, Destatis district yields (regional database 41241) and Duden et al. 2024, fertiliser statistics, MODIS MOD13Q1, ESA WorldCover. Benchmarks: JRC MARS Bulletins 2009-2026, Destatis Fachserie 3 Reihe 3.2.1 2005-2022.</p>
     <p><b>Validation.</b> Every design choice was made on the training years 1979-2017 by forward validation (fit up to a year, predict the years after), mostly in two separate periods, with the rules written down before results were seen. The test years were looked at once, after freezing the model with file fingerprints. The frozen predictions for 2026 will be checked against the official 2026 district yields in spring 2027.</p>
-    <p><b>Known limitations.</b> The model is still somewhat too optimistic in very dry and hot summers, above all for maize. Barley before harvest is behind MARS. At state level the Destatis harvest reporters, who observe the crop, are better. Grain maize district data end in 2021. MODIS satellites are retiring; crop-specific Sentinel-2 greenness is being added (next version). This platform shows districts; field and 10 m maps are phase 2.</p>
+    <p><b>Known limitations.</b> The model is still somewhat too optimistic in very dry and hot summers, above all for maize. Barley before harvest is behind MARS. At state level the Destatis harvest reporters, who observe the crop, are better. Grain maize district data end in 2021. MODIS satellites are retiring; crop-specific Sentinel-2 greenness is being added (next version).</p>
+    <p><b>Field level (NRW study areas).</b> Weekly 10 m green LAI and NDVI for every field in four 8 × 8 km areas, seasons 2021–2025: measured from clear Sentinel-2 images (green LAI by a neural network trained on radiative-transfer simulations), gaps up to 30 days by a straight line, longer gaps by a model driven by the Sentinel-1 radar change, each value with its typical error. Single bad clear images (haze, missed cloud edges) are removed from LAI. Tests and comparisons with Copernicus HR-VPP and LAI 300 m are on the Accuracy page.</p>
   </div>
 </section>
 </div>
@@ -410,6 +418,13 @@ document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
     await import("./js/my_fields.js");
     drawPanel();
   } catch (e) { console.warn("field level not available:", e); }
+  try {                                   // field benchmark results on the Accuracy page (also optional)
+    const [{ fieldAccuracyHtml }, idx] = await Promise.all([import("./js/field_accuracy.js"),
+      fetch("field/index.json", { cache: "no-store" }).then(r => r.json()).catch(() => null)]);
+    const v = idx?.benchmark || idx?.version || "";
+    const r = await fetch(`field/benchmark.json?v=${v}`);
+    if (r.ok) document.getElementById("acc-field").innerHTML = fieldAccuracyHtml(await r.json());
+  } catch (e) { console.warn("field benchmark not available:", e); }
   // installable app: offline support (service worker), install button, offline note
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("./sw.js").catch(() => {});
   const ib = document.getElementById("install-app");

@@ -194,3 +194,14 @@ test("median curves per crop also for NDVI", () => {
 test("field margin strips get an English name", () => {
   assert.equal(cropStyle("other", "Randstreifen (Acker/DK)").label, "Field margin strip");
 });
+
+test("cropStyle: register names of small crops and landscape elements are shown in English", () => {
+  const cases = [["Blühstreifen (nur AUM)", "Flower strip"], ["Blühfläche (AUM-Altmaßnahme)", "Flower area"],
+    ["ÖR 1b Blühfläche auf AL", "Flower area"], ["ÖVF-Streifen AL", "Ecological focus strip"],
+    ["Streuobst mit DGL-Nutzung", "Meadow orchard"], ["Salatgurke (auch Einlegegurke)", "Cucumber"],
+    ["Salat (Garten, Lollo Rosso.)", "Lettuce"], ["Futterrübe/Runkelrübe", "Fodder beet"],
+    ["Gemenge Getr./Leg.(mehr Getr.)", "Mixed crop"], ["Riesenkürbis (auch Hokkaido)", "Pumpkin"],
+    ["Unbefestigte Mieten AL", "Field clamp"], ["Kernobst z.B. Äpfel, Birnen", "Pome fruit"]];
+  for (const [crop, label] of cases) assert.equal(cropStyle("other", crop).label, label, crop);
+  assert.equal(cropStyle("other cereal", "Wintermenggetreide").label, "Mixed cereals");
+});

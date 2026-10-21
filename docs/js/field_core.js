@@ -131,7 +131,19 @@ const SPECIAL = [[/^Gartenk(ü|u)rbis/i, "Pumpkin"], [/^M(ö|o)hre/i, "Carrot"],
   [/^Spargel/i, "Asparagus"], [/^Winterhafer/i, "Winter oats"], [/^Sommerhafer/i, "Spring oats"], [/^Winterroggen/i, "Winter rye"],
   [/^Sommerroggen/i, "Spring rye"], [/^Wintertriticale/i, "Winter triticale"], [/^Sommertriticale/i, "Spring triticale"],
   [/^Gurke/i, "Cucumber"], [/^Zichorie/i, "Chicory"], [/^Ackerbohne/i, "Field bean"], [/^Gem(ü|u)seerbse/i, "Vegetable pea"],
-  [/^Luzerne/i, "Lucerne"], [/^Kleegras/i, "Clover-grass"], [/^Baumschule/i, "Tree nursery"], [/^Chinaschilf|Miscanthus/i, "Miscanthus"], [/^Randstreifen/i, "Field margin strip"]];
+  [/^Luzerne/i, "Lucerne"], [/^Kleegras/i, "Clover-grass"], [/^Baumschule/i, "Tree nursery"], [/^Chinaschilf|Miscanthus/i, "Miscanthus"], [/^Randstreifen/i, "Field margin strip"],
+  // small crops and landscape elements of the NRW register (all names found in the four study areas, 2021-2025)
+  [/^Bl(ü|u)hstreifen/i, "Flower strip"], [/Bl(ü|u)hfl(ä|a)che/i, "Flower area"], [/^(Ö|O)VF-Streifen/i, "Ecological focus strip"],
+  [/^Streuobst/i, "Meadow orchard"], [/^Wildacker/i, "Game cover crop"], [/^Salatgurke/i, "Cucumber"], [/^Salat/i, "Lettuce"],
+  [/^Gem(ü|u)sekohl/i, "Cabbage"], [/^Vertragsnaturs|^Naturschutz/i, "Nature conservation"], [/^Unbefestigte Mieten/i, "Field clamp"],
+  [/menggetreide/i, "Mixed cereals"], [/^Gemenge|^Mischkulturen/i, "Mixed crop"], [/^Futterr(ü|u)be|Runkelr(ü|u)be/i, "Fodder beet"],
+  [/Heide/i, "Heath"], [/^Uferrandstr/i, "Riparian buffer strip"], [/^Phacelia/i, "Phacelia"], [/^Beerenobst/i, "Berries"],
+  [/^Sonnenblume/i, "Sunflower"], [/^Wildsamen/i, "Wild seed production"], [/beetweiser Anbau/i, "Market garden"],
+  [/^Steinobst/i, "Stone fruit"], [/^Kernobst/i, "Pome fruit"], [/^Weihnachtsb(ä|a)ume/i, "Christmas trees"], [/^Forstfl/i, "Forest"],
+  [/^Hanf/i, "Hemp"], [/^Silphium/i, "Silphium"], [/k(ü|u)rbis/i, "Pumpkin"], [/^Rhabarber/i, "Rhubarb"], [/^Tomate/i, "Tomato"],
+  [/rettich/i, "Radish"], [/aus der Erzeugung/i, "Set-aside"], [/Erosion/i, "Erosion protection strip"], [/^Rebland/i, "Vineyard"],
+  [/Senf/i, "Mustard"], [/^Mangold|Rote Be(e)?te|Rote R(ü|u)be/i, "Chard / beetroot"], [/^Tulpe/i, "Tulips"], [/hirse/i, "Millet"],
+  [/^Sonstige Dauerkulturen/i, "Other permanent crops"], [/^Versuchsfl/i, "Trial plots"]];
 
 export function cropStyle(group, crop) {
   const sp = SPECIAL.find(([re]) => re.test(String(crop || "")));

@@ -519,3 +519,5 @@ function drawAreaChart(props, crops) {
 }
 
 window.MYFIELDS = { add, render, renderAreas };
+// the My fields tab may have been opened before this module finished loading: draw it now
+if (!document.getElementById("page-myfields")?.hidden) { renderAreas(); render(); }

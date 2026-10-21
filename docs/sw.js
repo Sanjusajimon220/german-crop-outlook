@@ -2,10 +2,10 @@
 // App shell and district data are stored at install; field files are stored as they are viewed (their URLs carry
 // ?v=<data version>, so a data rebuild never mixes old and new files); px.bin range requests are answered from a stored
 // full copy. A new APP_VERSION replaces the old caches on the next visit.
-const APP_VERSION = "2026-10-20b";
+const APP_VERSION = "2026-10-21a";
 const SHELL = `shell-${APP_VERSION}`, FIELD = "field-data", CDN = "cdn-libs";
 const SHELL_FILES = ["./", "./index.html", "./manifest.webmanifest", "./js/field_core.js", "./js/field_view.js", "./js/my_fields.js",
-  "./js/isoxml.js", "./icons/icon-192.png", "./icons/icon-512.png", "./data/meta.json", "./data/districts.geojson",
+  "./js/isoxml.js", "./js/field_accuracy.js", "./icons/icon-192.png", "./icons/icon-512.png", "./data/meta.json", "./data/districts.geojson",
   "./data/accuracy.json", "./data/ndvi.json"]
   .concat(["winter_wheat", "winter_barley", "grain_maize", "silage_maize", "potato"].flatMap(c => [`./data/fc_${c}.json`, `./data/water_${c}.json`]));
 const CDN_FILES = ["https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js", "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"];
