@@ -339,3 +339,31 @@ export function zoneTotal(areas, rates) {
   if (!rates || rates.some(v => v === "" || v == null || !isFinite(v))) return null;
   return areas.reduce((s, a, i) => s + a * Number(rates[i]), 0);
 }
+
+// per-field classes on the study-area map (field/<area>_2025/classes.json)
+export const CLASS_STYLES = {
+  prod: { low: "#d9534f", average: "#f0ad4e", high: "#2e9e5b", "not assessed": "#3a4157" },
+  var: { uniform: "#7cc4ec", "variable, reliable zones": "#c07ad6", "variable, less stable zones": "#f2a93b", "not assessed": "#3a4157" },
+};
+export function classLegend(classes, props, kind, crop = null) {
+  if (!classes) return null;
+  const key = kind === "prod" ? "prod_class" : "var_class", rows = Object.keys(CLASS_STYLES[kind]).map(label => ({ label, colour: CLASS_STYLES[kind][label], n: 0, ha: 0 }));
+  for (const p of props) {
+    if (crop && cropStyle(p.group, p.crop).label !== crop) continue;
+    const c = classes.fields[String(p.id)]?.[key] || "not assessed", r = rows.find(x => x.label === c);
+    if (r) { r.n++; r.ha += +p.ha || 0; }
+  }
+  return rows.map(r => ({ ...r, ha: Math.round(r.ha * 10) / 10 }));
+}
+
+// field counts per crop (label) and class, largest crop area first
+export function classByCrop(classes, props, kind) {
+  if (!classes) return [];
+  const key = kind === "prod" ? "prod_class" : "var_class", by = {};
+  for (const p of props) {
+    const crop = cropStyle(p.group, p.crop).label, c = classes.fields[String(p.id)]?.[key] || "not assessed";
+    const e = by[crop] ||= { crop, ha: 0, counts: Object.fromEntries(Object.keys(CLASS_STYLES[kind]).map(k => [k, 0])) };
+    e.ha += +p.ha || 0; e.counts[c] = (e.counts[c] || 0) + 1;
+  }
+  return Object.values(by).sort((a, b) => b.ha - a.ha);
+}

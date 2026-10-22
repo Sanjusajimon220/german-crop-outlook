@@ -1,7 +1,7 @@
 // MY FIELDS: fields picked on the map (kept in this browser, no accounts), list + map, zones, rates, exports.
 import { loadMyFields, saveMyFields, zones, fmtUnc, sourceLabel, withinNoise, nearestRgbDate, clearRgbDate,
          affineFromCorners, invertAffine, applyAffine, groupMedian, exportCheck, noDataReason, fieldRgbDate,
-         seriesChart, SOURCE_COLOURS, legendSpec, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS } from "./field_core.js";
+         seriesChart, SOURCE_COLOURS, legendSpec, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS, CLASS_STYLES, classLegend, classByCrop } from "./field_core.js";
 const badge = (g, c) => { const k = cropStyle(g, c); return `<span class="crop" style="--c:${k.colour}"><i></i>${k.label}</span>`; };
 
 import { buildTaskData } from "./isoxml.js";
@@ -20,6 +20,18 @@ const NOVAL = "#3a4157";                     // field pixel without a value yet 
 const PXIDX = {};
 const MZ = {};                               // 5-season zones per area (Module A): { meta, img }
 const MZ_SEASON = 2025;
+const CLS = {};                              // per-field classes per area (season 2025): productivity, variability
+async function fieldClasses(area) {
+  if (!(area in CLS)) CLS[area] = await fetch(url(`${area}_${MZ_SEASON}/classes.json`)).then(r => r.json()).catch(() => null);
+  return CLS[area];
+}
+const CLASS_VIEWS = { prod: "Productivity vs neighbours", var: "Variability within the field" };
+// 'prod' is computed but not shown: the ranking between fields repeats only weakly from year to year (owner decision 2026-10-22)
+const SHOWN_CLASS_VIEWS = ["var"];
+const CLASS_NOTES = {
+  prod: "Each field's growth (season total of green leaf area) compared with the median of all fields of the same crop in this area, averaged over 2021–2025; thirds of the fields: low / average / high. Relative to the neighbours, not measured yield.",
+  var: "How much each field varies inside, over 2021–2025. Each field is split into a weak, middle and strong part (zones); uniform = these parts differ by less than 5 % (one rate is fine); variable, reliable zones = clear differences and the weak part stayed weak in at least 4 of 5 seasons (variable rates worth considering); less stable = the pattern changed in some seasons. Open a field to see its zones.",
+};
 const PROD_KEY = "cropOutlook.myFields.products";       // product chosen per field (label and unit of the rates)
 function products() { try { return JSON.parse(window.localStorage.getItem(PROD_KEY)) || {}; } catch (e) { return {}; } }
 function setProduct(id, k) { const p = products(); p[id] = k; try { window.localStorage.setItem(PROD_KEY, JSON.stringify(p)); } catch (e) { /* blocked */ } }
@@ -372,6 +384,7 @@ export async function renderAreas() {
   let d;
   try { d = await loadSeason(AV.area, AV.year); } catch (e) { box.innerHTML = `<p class="note">Field data for ${AV.area} ${AV.year} are not available.</p>`; return; }
   AV.geo = d.geo; AV.series = d.series;
+  const isClass = AV.view in CLASS_VIEWS, cls = isClass && AV.year === MZ_SEASON ? await fieldClasses(AV.area) : null;
   const props = d.geo.features.map(f => f.properties).filter(p => d.series.fields[p.id]);
   const all = cropSummary(props), total = all.reduce((a, c) => a + c.ha, 0);
   // main crops (>= 1 % of the area, at most 12) get their own legend row; the long tail is grouped as "Other crops"
@@ -395,11 +408,12 @@ export async function renderAreas() {
       <div class="stat"><div class="k">Crops</div><div class="v">${all.length}</div><div class="note">${main.length} main</div></div>
       <div class="stat"><div class="k">Median LAI, arable</div><div class="v">${medLai == null ? "–" : medLai.toFixed(1)}</div><div class="note">week of ${d.series.weeks[w]}</div></div>
     </div>
-    <div class="seg" style="margin-bottom:10px">${[["crops", "Crops"], ["lai", "Green LAI"], ["ndvi", "NDVI"]].map(([k, t]) => `<button data-view="${k}" class="${k === AV.view ? "on" : ""}">${t}</button>`).join("")}</div>
+    <div class="seg" style="margin-bottom:10px">${[["crops", "Crops"], ["lai", "Green LAI"], ["ndvi", "NDVI"], ["var", "Variability"]].filter(([k]) => !(k in CLASS_VIEWS) || SHOWN_CLASS_VIEWS.includes(k)).map(([k, t]) => `<button data-view="${k}" class="${k === AV.view ? "on" : ""}">${t}</button>`).join("")}</div>
+    ${isClass ? `<p class="note" style="margin:0 0 8px">${AV.year === MZ_SEASON ? CLASS_NOTES[AV.view] : `${CLASS_VIEWS[AV.view]} is available for the ${MZ_SEASON} field boundaries: choose season ${MZ_SEASON}.`}</p>` : ""}
     <div class="mf-mapgrid">
       <div>
-        <svg id="mf-areamap" viewBox="0 0 520 520" role="img" aria-label="Fields of the study area coloured by crop" ${AV.view === "crops" ? "" : "hidden"}></svg>
-        <div id="mf-animbox" ${AV.view === "crops" ? "hidden" : ""}>
+        <svg id="mf-areamap" viewBox="0 0 520 520" role="img" aria-label="Fields of the study area coloured by ${isClass ? CLASS_VIEWS[AV.view].toLowerCase() : "crop"}" ${AV.view === "crops" || isClass ? "" : "hidden"}></svg>
+        <div id="mf-animbox" ${AV.view === "crops" || isClass ? "hidden" : ""}>
           <canvas id="mf-anim" width="800" height="800" style="width:100%;display:block;background:var(--bg);border-radius:8px;border:1px solid var(--line)" role="img" aria-label="Weekly map of the whole study area"></canvas>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
             <button id="mf-play" aria-label="Play">▶ Play</button>
@@ -410,15 +424,21 @@ export async function renderAreas() {
           <div class="legend" id="mf-anim-legend" style="margin-top:6px"></div>
         </div>
       </div>
-      <aside class="legendlist" aria-label="Crops">
+      ${isClass && cls ? `<aside class="legendlist" aria-label="${CLASS_VIEWS[AV.view]}"><div class="k" style="margin-bottom:4px">${CLASS_VIEWS[AV.view]}${AV.crop ? ` · ${AV.crop}` : ""}</div>
+        ${classLegend(cls, props, AV.view, AV.crop && !AV.other?.has(AV.crop) && AV.crop !== "Other crops" ? AV.crop : null).map(c => `<div class="crow" style="--c:${c.colour};display:flex;gap:8px;align-items:center;padding:4px 0"><i style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${c.colour}"></i><span style="flex:1">${c.label}</span><span class="note">${c.n} fields · ${Math.round(c.ha)} ha</span></div>`).join("")}
+        <div class="k" style="margin:12px 0 4px">Crops · click to filter</div>
+        ${[{ label: "All crops", colour: "#8b96b4" }].concat(rows).map(c => `<button data-crop="${c.label}" class="${(AV.crop || "All crops") === c.label ? "on" : ""}" style="--c:${c.colour}"><i></i><span>${c.label}</span></button>`).join("")}</aside>` : `<aside class="legendlist" aria-label="Crops">
         <div class="k" style="margin-bottom:4px">Crops · click to filter</div>
         ${[{ label: "All crops", colour: "#8b96b4", n: props.length, ha: total }].concat(rows).map(c => `
           <button data-crop="${c.label}" class="${(AV.crop || "All crops") === c.label ? "on" : ""}" style="--c:${c.colour}">
             <i></i><span>${c.label}</span><span class="note">${Math.round(c.ha)} ha</span>
             <span class="bar"><span style="width:${(100 * c.ha / total).toFixed(1)}%"></span></span>
           </button>`).join("")}
-      </aside>
+      </aside>`}
     </div>
+    ${isClass && cls ? `<h3 style="margin:16px 0 6px">${CLASS_VIEWS[AV.view]} by crop</h3><div class="tbl"><table><tr><th>Crop</th>${Object.keys(CLASS_STYLES[AV.view]).map(k => `<th><span style="color:${CLASS_STYLES[AV.view][k]}">■</span> ${k}</th>`).join("")}</tr>
+      ${classByCrop(cls, props, AV.view).filter(r => main.some(m => m.label === r.crop)).map(r => `<tr><td>${r.crop}</td>${Object.keys(CLASS_STYLES[AV.view]).map(k => `<td>${r.counts[k] || 0}</td>`).join("")}</tr>`).join("")}</table></div>
+      <p class="note">Number of fields per crop (season ${MZ_SEASON}); main crops only.</p>` : ""}
     <div class="mf-head" style="margin-top:16px"><h3 style="margin:0">Median per crop through the season</h3>
       <span class="seg">${[["lai", "Green LAI"], ["ndvi", "NDVI"]].map(([k, t]) => `<button data-metric="${k}" class="${k === AV.metric ? "on" : ""}">${t}</button>`).join("")}</span></div>
     <div class="crops" id="mf-chartcrops" style="margin:8px 0"></div><div id="mf-areachart"></div>`;
@@ -429,9 +449,9 @@ export async function renderAreas() {
     AV.metric = b.dataset.metric; box.querySelectorAll("button[data-metric]").forEach(x => x.classList.toggle("on", x === b)); drawAreaChart(props, all);
   });
   box.querySelectorAll("button[data-crop]").forEach(b => b.onclick = () => { AV.crop = b.dataset.crop === "All crops" ? null : b.dataset.crop; renderAreas(); });
-  drawAreaMap(all);
+  drawAreaMap(all, isClass ? cls : null);
   drawAreaChart(props, all);
-  if (AV.view !== "crops") initAnim();
+  if (AV.view !== "crops" && !isClass) initAnim();
 }
 
 // ---- whole-area animation of the weekly 10 m maps (monthly or weekly steps) ----
@@ -518,13 +538,15 @@ function chipMatch(label) {
   return !AV.crop || AV.crop === label || (AV.crop === "Other crops" && AV.other && AV.other.has(label));
 }
 
-function drawAreaMap(crops) {
+function drawAreaMap(crops, cls = null) {
+  const kind = cls && AV.view in CLASS_VIEWS ? AV.view : null, ckey = kind === "prod" ? "prod_class" : "var_class";
+  const classOf = id => cls?.fields[String(id)]?.[ckey] || "not assessed";
   const svg = d3.select("#mf-areamap"), proj = d3.geoMercator().fitSize([520, 520], AV.geo), path = d3.geoPath(proj);
   const col = Object.fromEntries(crops.map(c => [c.label, c.colour]));
   const tip = document.getElementById("mf-tip");
   svg.selectAll("path").data(AV.geo.features.filter(f => AV.series.fields[f.properties.id]), f => f.properties.id).join("path")
     .attr("d", path)
-    .attr("fill", f => col[cropStyle(f.properties.group, f.properties.crop).label] || "#555")
+    .attr("fill", f => (kind ? CLASS_STYLES[kind][classOf(f.properties.id)] : col[cropStyle(f.properties.group, f.properties.crop).label] || "#555"))
     .attr("fill-opacity", f => (chipMatch(cropStyle(f.properties.group, f.properties.crop).label) ? 0.95 : 0.12))
     .attr("stroke", f => (CUR && CUR.area === AV.area && CUR.year === AV.year && CUR.id === f.properties.id ? "#fff" : "#0b1020"))
     .attr("stroke-width", f => (CUR && CUR.id === f.properties.id ? 2 : 0.4))
@@ -534,7 +556,8 @@ function drawAreaMap(crops) {
       tip.style.display = "block";
       const b = document.getElementById("mf-areas").getBoundingClientRect();
       tip.style.left = (e.clientX - b.left + 14) + "px"; tip.style.top = (e.clientY - b.top + 14) + "px";
-      tip.innerHTML = `<b>${cropStyle(P.group, P.crop).label}</b> · field ${P.id}<br>${P.ha} ha${P.partial ? " · partly outside the area" : ""}<br>green LAI ${s.lai[w] == null ? "–" : fmtUnc(s.lai[w], s.lai_unc[w], 1)} (week of ${AV.series.weeks[w]})`;
+      tip.innerHTML = `<b>${cropStyle(P.group, P.crop).label}</b> · field ${P.id}<br>${P.ha} ha${P.partial ? " · partly outside the area" : ""}<br>green LAI ${s.lai[w] == null ? "–" : fmtUnc(s.lai[w], s.lai_unc[w], 1)} (week of ${AV.series.weeks[w]})`
+        + (kind ? `<br>${CLASS_VIEWS[kind]}: <b>${classOf(P.id)}</b>${kind === "prod" && cls.fields[String(P.id)]?.prod != null ? ` (${Math.round(100 * cls.fields[String(P.id)].prod)} % of the crop median)` : ""}` : "");
     })
     .on("mouseleave", () => { tip.style.display = "none"; })
     .on("click", (e, f) => { tip.style.display = "none"; openField({ area: AV.area, year: AV.year, id: f.properties.id }).catch(() => {}); });

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc , leavesField, clearRgbDate, fieldUrl, noDataReason, zoomAllowed, areaToEnter, groupMedian, exportCheck, fieldRgbDate, areaRgbDate, legendSpec, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS } from "../../docs/js/field_core.js";
+import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc , leavesField, clearRgbDate, fieldUrl, noDataReason, zoomAllowed, areaToEnter, groupMedian, exportCheck, fieldRgbDate, areaRgbDate, legendSpec, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS, CLASS_STYLES, classLegend, classByCrop } from "../../docs/js/field_core.js";
 
 const weeks = ["2024-05-20", "2024-05-27", "2024-06-03"];
 
@@ -234,4 +234,25 @@ test("zoneTotal: total amount for the field, only when every zone has a rate", (
 test("zoneAreas: edge pixels count with their share of the field", () => {
   assert.deepEqual(zoneAreas([0, 1, 2, 2], 3, 0.01, [1, 0.5, 1, 0.2]), [0.01, 0.005, 0.012]);
   assert.deepEqual(zoneAreas([2, 2, 2, 2], 3, 0.01, [1, 1, 1, 0.5]), [0, 0, 0.035]);
+});
+
+test("classLegend: field count and hectares per class, in the fixed order, not-assessed last", () => {
+  const props = [{ id: 1, ha: 2 }, { id: 2, ha: 3 }, { id: 3, ha: 1.5 }, { id: 4, ha: 4 }];
+  const cls = { fields: { 1: { prod_class: "high" }, 2: { prod_class: "low" }, 3: { prod_class: "high" }, 4: { prod_class: "not assessed" } } };
+  const L = classLegend(cls, props, "prod");
+  assert.deepEqual(L.map(r => [r.label, r.n, r.ha]), [["low", 1, 3], ["average", 0, 0], ["high", 2, 3.5], ["not assessed", 1, 4]]);
+  assert.equal(L[2].colour, CLASS_STYLES.prod.high);
+  assert.equal(classLegend(null, props, "prod"), null);
+});
+
+test("classByCrop: field counts per crop and class, largest crop first; classLegend can filter by crop", () => {
+  const props = [{ id: 1, ha: 2, group: "wheat", crop: "Winterweichweizen" }, { id: 2, ha: 3, group: "wheat", crop: "Winterweichweizen" },
+    { id: 3, ha: 1, group: "sugar beet", crop: "Zuckerrüben" }];
+  const cls = { fields: { 1: { var_class: "uniform" }, 2: { var_class: "variable, reliable zones" }, 3: { var_class: "variable, reliable zones" } } };
+  const t = classByCrop(cls, props, "var");
+  assert.equal(t[0].crop, "Winter wheat");
+  assert.equal(t[0].counts.uniform, 1); assert.equal(t[0].counts["variable, reliable zones"], 1);
+  assert.equal(t[1].crop, "Sugar beet"); assert.equal(t[1].counts["variable, reliable zones"], 1);
+  const L = classLegend(cls, props, "var", "Sugar beet");
+  assert.deepEqual(L.map(r => r.n), [0, 1, 0, 0]);
 });

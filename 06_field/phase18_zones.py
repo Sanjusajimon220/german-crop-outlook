@@ -112,7 +112,9 @@ def _season_grid(area, year):
     gk = z["rows"][ok] * GRID + z["cols"][ok]
     g[gk], P[gk], F[gk] = rel, peak, fids[inv]
     A[gk] = np.isin(groups[inv], list(ARABLE)) & np.isfinite(rel)
-    return dict(rel=g, peak=P, arable=A, field=F, group={int(f): gr for f, gr in zip(fids, groups)})
+    SUM = np.full(GRID * GRID, np.nan); SUM[gk] = s                  # raw season sum (used by the per-field classes)
+    PG = np.full(GRID * GRID, "", dtype=object); PG[gk] = groups[inv]
+    return dict(rel=g, peak=P, arable=A, field=F, group={int(f): gr for f, gr in zip(fids, groups)}, sum=SUM, pgroup=PG)
 
 
 def run():
