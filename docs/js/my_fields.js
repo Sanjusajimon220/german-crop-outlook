@@ -163,6 +163,7 @@ async function openField(f) {
       <canvas id="mf-map" width="360" height="300" style="width:100%;background:var(--bg);border-radius:8px;border:2px solid ${cs.colour}"></canvas>
       <div class="legend" id="mf-legend"></div><div class="note" id="mf-map-cap"></div>
       <div id="mf-kpi" class="kpis" style="margin-top:10px"></div>
+      <div id="mf-ov-title" class="note" style="margin-top:10px"></div><div id="mf-ov-chart"></div><p class="note">${src}</p>
     </div>
     <div data-pane="charts">
       <h3>Weekly green LAI</h3><div id="mf-lai-chart"></div>
@@ -318,8 +319,14 @@ async function paint() {
     <div class="kpi"><div class="k">Green LAI</div><div class="v">${s.lai[w] == null ? "–" : fmtUnc(s.lai[w], s.lai_unc[w], 1)}</div><div class="s">${s.lai[w] == null ? noDataReason(s.src, w) || "no value" : sourceLabel(s.src[w])}</div></div>
     <div class="kpi"><div class="k">NDVI</div><div class="v">${s.ndvi[w] == null ? "–" : fmtUnc(s.ndvi[w], s.ndvi_unc[w], 2)}</div><div class="s">${s.ndvi[w] == null ? noDataReason(s.ndvi_src, w) || "no value" : sourceLabel(s.ndvi_src[w])}</div></div>
     <div class="kpi"><div class="k">Season</div><div class="v">${s.season[w] ? "in season" : "off-season"}</div><div class="s">${s.season[w] ? "the registered crop" : "previous crop / cover crop / bare soil"}</div></div>`;
-  document.getElementById("mf-lai-chart").innerHTML = seriesChart({ values: s.lai, unc: s.lai_unc, src: s.src, season: s.season, week: w, weeks: CUR.weeks, max: 6, label: "green LAI" });
-  document.getElementById("mf-ndvi-chart").innerHTML = seriesChart({ values: s.ndvi, unc: s.ndvi_unc, src: s.ndvi_src, season: s.season, week: w, weeks: CUR.weeks, max: 1, label: "NDVI" });
+  const laiChart = seriesChart({ values: s.lai, unc: s.lai_unc, src: s.src, season: s.season, week: w, weeks: CUR.weeks, max: 6, label: "green LAI" });
+  const ndviChart = seriesChart({ values: s.ndvi, unc: s.ndvi_unc, src: s.ndvi_src, season: s.season, week: w, weeks: CUR.weeks, max: 1, label: "NDVI" });
+  document.getElementById("mf-lai-chart").innerHTML = laiChart;
+  document.getElementById("mf-ndvi-chart").innerHTML = ndviChart;
+  // Overview: this field's weekly curve for the chosen layer (Zones -> green LAI), dashed line = the slider's week
+  const ovNdvi = CUR.layer === "ndvi";
+  document.getElementById("mf-ov-title").textContent = `This field through the season: weekly ${ovNdvi ? "NDVI" : "green LAI"} (band ± typical error, shaded = off-season, dashed = selected week)`;
+  document.getElementById("mf-ov-chart").innerHTML = ovNdvi ? ndviChart : laiChart;
   if (document.getElementById("mf-areamap")) drawAreaMap(cropSummary(AV.geo ? AV.geo.features.map(f => f.properties) : []));   // highlight the open field
 }
 
