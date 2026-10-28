@@ -301,6 +301,8 @@ class Growth(torch.nn.Module):
             g0 = s.get("g0", 0.0)
             sen = torch.relu(gf - g0) / (1 - g0)
             lai = lai * (1 - post * torch.clamp(s["r_sen"] * sen + s["r_dry"] * (1 - fw), 0, 0.5))
+            if getattr(self, "lai_hook", None) is not None:   # field Kalman filter (Job 2 E3): set LAI on update days
+                lai = self.lai_hook(day, lai)
             lai_max = torch.maximum(lai_max, lai)
             if record:
                 daily.append(lai)
