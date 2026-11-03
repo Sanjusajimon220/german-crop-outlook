@@ -191,7 +191,7 @@ export function monthlyFrames(weeks) {
 }
 
 // colours of the value sources (measured, straight line, radar, after the last clear image); index 0 = no value
-export const SOURCE_COLOURS = ["#555", "#4caf7d", "#7cc4ec", "#f2a93b", "#c07ad6"];
+export const SOURCE_COLOURS = ["#8a96a3", "#1baf7a", "#2a78d6", "#eda100", "#6250d6"];
 
 // weekly chart as an SVG string (no DOM, no d3): +- band and line over the weeks with a value, one dot per week
 // coloured by its source, off-season weeks shaded, the selected week dashed
@@ -214,13 +214,24 @@ export function seriesChart({ values, unc, src, season, week, weeks, max, label,
   const dots = values.map((v, i) => (v == null ? "" : `<circle cx="${x(i)}" cy="${y(v)}" r="2.8" fill="${SOURCE_COLOURS[src[i]] || SOURCE_COLOURS[0]}"><title>${weeks[i]}: ${v}</title></circle>`)).join("");
   const stageLines = marks.map(m => `<line x1="${x(m.i)}" x2="${x(m.i)}" y1="${T}" y2="${H - B}" stroke="${STAGE_COLOUR}" stroke-width="1.2" stroke-dasharray="1 2"><title>expected ${m.label}: ${m.date}</title></line>`).join("");
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly ${label}">${off}${ticks}${months}${stageLines}
-    <path d="${band}" fill="#8b96b4" fill-opacity=".22"/><path d="${line}" fill="none" stroke="#c9d2e6" stroke-width="1.4"/>${dots}
+    <path d="${band}" fill="#8b96b4" fill-opacity=".22"/><path d="${line}" fill="none" stroke="#1b3a57" stroke-width="1.4"/>${dots}
     <line x1="${x(week)}" x2="${x(week)}" y1="${T}" y2="${H - B}" stroke="#8b96b4" stroke-dasharray="3 3"/></svg>`;
+}
+
+// time sliders (forecast dates, field weeks, study-area frames): one round play / pause button everywhere
+export function playIcon(playing) {
+  return playing ? '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 2.5h3v11h-3zM9.5 2.5h3v11h-3z"/></svg>'
+    : '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg>';
+}
+
+// next slider position while playing: null at the end (the player stops), or back to 0 when it loops
+export function nextFrame(value, max, loop = false) {
+  return value < max ? value + 1 : loop ? 0 : null;
 }
 
 // crop calendar (phase25_calendar.py, calendar.json): stage names and where each stage falls on the weekly axis
 export const STAGE_LABELS = { emergence: "emergence", stem_extension: "stem extension", heading: "heading", milk_ripe: "milk ripe", yellow_ripe: "yellow ripe" };
-const STAGE_COLOUR = "#e0a43a";
+const STAGE_COLOUR = "#eb6834";
 
 // stage date -> fractional week index (days after the first Monday / 7); stages not reached in the run are left out
 export function stageMarks(dates, stages, weeks) {
@@ -245,7 +256,7 @@ export function calendarChart({ curve, stages, weeks, week }) {
   const months = weeks.map((w, i) => [w, i]).filter(([w]) => +w.slice(8, 10) <= 7 && ["11", "01", "03", "05", "07"].includes(w.slice(5, 7)))
     .map(([w, i]) => `<text x="${x(i)}" y="${H - 6}" text-anchor="middle">${["", "Jan", "", "Mar", "", "May", "", "Jul", "", "", "", "Nov"][+w.slice(5, 7)]}</text>`).join("");
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Crop calendar: development since sowing">${ticks}${months}${thr}
-    <path d="M${pts.join("L")}" fill="none" stroke="#c9d2e6" stroke-width="1.6"/>${dots}
+    <path d="M${pts.join("L")}" fill="none" stroke="#1b3a57" stroke-width="1.6"/>${dots}
     <line x1="${x(week)}" x2="${x(week)}" y1="${T}" y2="${H - B}" stroke="#8b96b4" stroke-dasharray="3 3"/></svg>`;
 }
 
@@ -375,8 +386,8 @@ export function zoneTotal(areas, rates) {
 
 // per-field classes on the study-area map (field/<area>_2025/classes.json)
 export const CLASS_STYLES = {
-  prod: { low: "#d9534f", average: "#f0ad4e", high: "#2e9e5b", "not assessed": "#3a4157" },
-  var: { uniform: "#7cc4ec", "variable, reliable zones": "#c07ad6", "variable, less stable zones": "#f2a93b", "not assessed": "#3a4157" },
+  prod: { low: "#e34948", average: "#eda100", high: "#008300", "not assessed": "#c9d1d8" },
+  var: { uniform: "#2a78d6", "variable, reliable zones": "#6250d6", "variable, less stable zones": "#eb6834", "not assessed": "#c9d1d8" },
 };
 export function classLegend(classes, props, kind, crop = null) {
   if (!classes) return null;

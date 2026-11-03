@@ -161,7 +161,7 @@ function fieldFill(f) {
     const dv = s.lai[w] - s.lai[w - 1];
     return withinNoise(dv, s.lai_unc[w] ?? 0) ? "#8b96b4" : d3.interpolateRdBu(0.5 + Math.max(-0.5, Math.min(0.5, dv / 2)));
   }
-  if (FV.layer === "alert") return s.alert[w] ? "#e0562a" : "none";
+  if (FV.layer === "alert") return s.alert[w] ? "#e34948" : "none";
   if (FV.layer === "crop") return cropStyle(f.properties.group, f.properties.crop).colour;
   return "none";
 }
@@ -200,7 +200,7 @@ function fieldLegend(rgbD) {
   } else if (FV.layer === "crop") {
     h = cropSummary(FV.geo.features.map(f => f.properties)).slice(0, 12).map(c => `<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${c.colour}"></span> ${c.label} (${c.n})</span>`).join(" ");
   } else if (L.kind === "swatches") {
-    const col = FV.layer === "alert" ? ["#e0562a"] : SRC_COL;
+    const col = FV.layer === "alert" ? ["#e34948"] : SRC_COL;
     h = L.items.map((t, i) => `<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${col[i]}"></span> ${t}</span>`).join(" ");
   } else {
     h = rgbD ? `<span>Sentinel-2 true colour, ${rgbD} (nearest date clear over most of the area)</span>` : "<span>No clear Sentinel-2 image of this area within 3 weeks of this week.</span>";

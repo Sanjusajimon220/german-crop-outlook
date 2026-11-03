@@ -1,14 +1,14 @@
 // MY FIELDS: fields picked on the map (kept in this browser, no accounts), list + map, zones, rates, exports.
 import { loadMyFields, saveMyFields, zones, fmtUnc, sourceLabel, withinNoise, nearestRgbDate, clearRgbDate,
          affineFromCorners, invertAffine, applyAffine, groupMedian, exportCheck, noDataReason, fieldRgbDate,
-         seriesChart, SOURCE_COLOURS, legendSpec, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS, CLASS_STYLES, classLegend, classByCrop, stageMarks, calendarChart } from "./field_core.js";
+         seriesChart, SOURCE_COLOURS, legendSpec, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS, CLASS_STYLES, classLegend, classByCrop, stageMarks, calendarChart, playIcon, nextFrame } from "./field_core.js";
 const badge = (g, c) => { const k = cropStyle(g, c); return `<span class="crop" style="--c:${k.colour}"><i></i>${k.label}</span>`; };
 
 import { buildTaskData } from "./isoxml.js";
 import { FV, loadSeason, attribution, url } from "./field_view.js";
 
 const ARABLE = new Set(["wheat", "barley", "other cereal", "rapeseed", "maize", "potato", "sugar beet"]);
-const ZCOL = ["#d9534f", "#f0ad4e", "#2e9e5b"];
+const ZCOL = ["#e34948", "#eda100", "#008300"];
 // example fields shown on a first visit (one per study area, season 2025); users can remove them or add their own
 export const EXAMPLES = [{ area: "pilot", year: 2025, id: 8702226 }, { area: "selhausen", year: 2025, id: 8312694 },
                          { area: "north", year: 2025, id: 8910847 }, { area: "south", year: 2025, id: 8965510 }];
@@ -16,7 +16,7 @@ let ST = loadMyFields(safeStorage(), EXAMPLES);
 let CUR = null;
 const AREA_NAMES = { pilot: "Pilot · Düren", selhausen: "Selhausen", north: "North", south: "South" };
 const AV = { area: "pilot", year: 2025, crop: null, geo: null, series: null, view: "crops", frame: 0, step: "month", timer: null, metric: "lai", sel: new Set() };   // the study area shown
-const NOVAL = "#3a4157";                     // field pixel without a value yet (before its first clear image)
+const NOVAL = "#dfe4ea";                     // field pixel without a value yet (before its first clear image)
 const PXIDX = {};
 const MZ = {};                               // 5-season zones per area (Module A): { meta, img }
 const MZ_SEASON = 2025;
@@ -160,6 +160,7 @@ async function openField(f) {
     <div data-pane="overview">
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
         <span class="seg">${[["lai", "Green LAI"], ["ndvi", "NDVI"], ["zones", "Zones"]].map(([k, t]) => `<button data-layer="${k}" class="${k === "lai" ? "on" : ""}">${t}</button>`).join("")}</span>
+        <button type="button" class="play" id="mf-wplay" title="Play" aria-label="Play through the weeks">${playIcon(false)}</button>
         <input type="range" id="mf-week" min="0" max="${d.series.weeks.length - 1}" value="${w0}" style="flex:1 1 160px" aria-label="Week"><b id="mf-week-lbl" class="note"></b>
       </div>
       <canvas id="mf-map" width="360" height="300" style="width:100%;background:var(--bg);border-radius:8px;border:2px solid ${cs.colour}"></canvas>
@@ -202,7 +203,22 @@ async function openField(f) {
   det.querySelectorAll("button[data-layer]").forEach(b => b.onclick = () => {
     CUR.layer = b.dataset.layer; det.querySelectorAll("button[data-layer]").forEach(x => x.classList.toggle("on", x === b)); paint();
   });
-  document.getElementById("mf-week").oninput = e => { CUR.week = +e.target.value; paint(); };
+  // play / pause through the weeks (stops at the last week; from the end it starts again at the first)
+  const wk = document.getElementById("mf-week"), wp = document.getElementById("mf-wplay");
+  const wStop = () => { clearInterval(CUR.wtimer); CUR.wtimer = null; wp.innerHTML = playIcon(false); wp.title = "Play"; };
+  wk.oninput = e => { CUR.week = +e.target.value; paint(); };
+  wk.addEventListener("pointerdown", wStop);
+  wp.onclick = () => {
+    if (CUR.wtimer) return wStop();
+    if (+wk.value >= +wk.max) { wk.value = 0; CUR.week = 0; paint(); }
+    wp.innerHTML = playIcon(true); wp.title = "Pause";
+    const f = CUR;
+    CUR.wtimer = setInterval(() => {
+      const n = nextFrame(+wk.value, +wk.max);
+      if (n == null || CUR !== f || !document.body.contains(wk)) { clearInterval(f.wtimer); f.wtimer = null; if (document.body.contains(wp)) { wp.innerHTML = playIcon(false); wp.title = "Play"; } return; }
+      wk.value = n; CUR.week = n; paint();
+    }, 600);
+  };
   paint();
   if (!arable) return;
   ["mf-from", "mf-to"].forEach(i => document.getElementById(i).onchange = () => { paint(); zonePane(); });
@@ -431,7 +447,7 @@ export async function renderAreas() {
         <div id="mf-animbox" ${AV.view === "crops" || isClass ? "hidden" : ""}>
           <canvas id="mf-anim" width="800" height="800" style="width:100%;display:block;background:var(--bg);border-radius:8px;border:1px solid var(--line)" role="img" aria-label="Weekly map of the whole study area"></canvas>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
-            <button id="mf-play" aria-label="Play">▶ Play</button>
+            <button type="button" class="play" id="mf-play" title="Play" aria-label="Play">${playIcon(false)}</button>
             <select id="mf-step" aria-label="Animation step"><option value="month" ${AV.step === "month" ? "selected" : ""}>Monthly</option><option value="week" ${AV.step === "week" ? "selected" : ""}>Weekly</option></select>
             <input type="range" id="mf-frame" min="0" value="0" style="flex:1 1 160px" aria-label="Date">
             <b id="mf-frame-lbl"></b>
@@ -477,7 +493,7 @@ function animFrames() {
 
 function stopAnim() {
   if (AV.timer) { clearInterval(AV.timer); AV.timer = null; }
-  const b = document.getElementById("mf-play"); if (b) b.textContent = "▶ Play";
+  const b = document.getElementById("mf-play"); if (b) { b.innerHTML = playIcon(false); b.title = "Play"; }
 }
 
 const FRAMES = {};
@@ -510,7 +526,7 @@ async function drawFrame() {
   const im = await frameImage(`${AV.area}_${AV.year}/${AV.view}/${wk}.png`), c = document.getElementById("mf-anim");
   if (!c) return;
   const ctx = c.getContext("2d");
-  ctx.fillStyle = getComputedStyle(document.body).getPropertyValue("--bg") || "#0a0e1a"; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.fillStyle = getComputedStyle(document.body).getPropertyValue("--bg") || "#f4f6f8"; ctx.fillRect(0, 0, c.width, c.height);
   if (im) {
     const mask = await cropMask();
     if (mask) {                                                       // only the chosen crop's pixels, the rest stays dark
@@ -540,7 +556,7 @@ function initAnim() {
   };
   document.getElementById("mf-play").onclick = () => {
     if (AV.timer) { stopAnim(); return; }
-    document.getElementById("mf-play").textContent = "⏸ Pause";
+    const pb = document.getElementById("mf-play"); pb.innerHTML = playIcon(true); pb.title = "Pause";
     AV.timer = setInterval(() => {
       if (!document.getElementById("mf-anim")) { stopAnim(); return; }
       AV.frame = (AV.frame + 1) % animFrames().length; drawFrame();
@@ -563,7 +579,8 @@ function drawAreaMap(crops, cls = null) {
     .attr("d", path)
     .attr("fill", f => (kind ? CLASS_STYLES[kind][classOf(f.properties.id)] : col[cropStyle(f.properties.group, f.properties.crop).label] || "#555"))
     .attr("fill-opacity", f => (chipMatch(cropStyle(f.properties.group, f.properties.crop).label) ? 0.95 : 0.12))
-    .attr("stroke", f => (CUR && CUR.area === AV.area && CUR.year === AV.year && CUR.id === f.properties.id ? "#fff" : "#0b1020"))
+    .attr("stroke", f => (CUR && CUR.area === AV.area && CUR.year === AV.year && CUR.id === f.properties.id ? "#003247" : "#33475b"))
+    .attr("stroke-opacity", f => (CUR && CUR.id === f.properties.id ? 1 : 0.45))
     .attr("stroke-width", f => (CUR && CUR.id === f.properties.id ? 2 : 0.4))
     .style("cursor", "pointer")
     .on("mousemove", (e, f) => {
@@ -605,7 +622,7 @@ function drawAreaChart(props, crops) {
     let d = "", pen = false;
     med[k].forEach((val, i) => { if (val == null) { pen = false; return; } d += `${pen ? "L" : "M"}${x(i).toFixed(1)},${y(val).toFixed(1)}`; pen = true; });
     const last = med[k].map((v, i) => [v, i]).filter(([v]) => v != null).pop();
-    return (AV.sel.size ? `<path d="${d}" fill="none" stroke="#0a0e1a" stroke-width="5" stroke-opacity=".8"/>` : "")
+    return (AV.sel.size ? `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="5" stroke-opacity=".9"/>` : "")
       + `<path d="${d}" fill="none" stroke="${col[k]}" stroke-width="${AV.sel.size ? 2.8 : 2.2}"><title>${k}</title></path>`
       + (AV.sel.size && last ? `<text x="${Math.min(W - R - 2, x(last[1]) + 3)}" y="${y(last[0]) - 3}" text-anchor="end" fill="${col[k]}">${k}</text>` : "");
   }).join("");

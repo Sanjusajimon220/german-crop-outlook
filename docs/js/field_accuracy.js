@@ -2,8 +2,8 @@
 // (data: field/benchmark.json, written by 06_field/fv2_benchmark_export.py). Pure string builders, tested in node.
 
 const f1 = v => +v.toFixed(1), pct = v => `${(v * 100).toFixed(1)} %`, n2 = v => (v == null ? "–" : v.toFixed(2));
-const SEASON_COLOURS = { 2021: "#7cc4ec", 2022: "#4caf7d", 2023: "#f2a93b", 2024: "#c07ad6" };
-const EVENT_COLOURS = { start: "#7cc4ec", peak: "#4caf7d", end: "#e0562a" };
+const SEASON_COLOURS = { 2021: "#2a78d6", 2022: "#1baf7a", 2023: "#eb6834", 2024: "#6250d6" };
+const EVENT_COLOURS = { start: "#2a78d6", peak: "#1baf7a", end: "#e34948" };
 const CROPS = ["wheat", "barley", "rapeseed", "maize", "potato", "sugar beet"];
 
 // item 2: one dot per Landsat date; above the diagonal = our series ranks the fields closer to Landsat
@@ -63,8 +63,8 @@ export function item4Chart(area, rows) {
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${area}: our LAI averaged to 300 m and Copernicus LAI 300 m">${ax}
     <text x="${L}" y="12" font-weight="600">${area[0].toUpperCase() + area.slice(1)}</text>
     <path d="${path(1)}" fill="none" stroke="currentColor" stroke-width="1.4" stroke-opacity=".8"/>
-    <path d="${path(2)}" fill="none" stroke="#e0562a" stroke-width="1" stroke-opacity=".7"/>
-    <path d="${path(3)}" fill="none" stroke="#4caf7d" stroke-width="1.8"/></svg>`;
+    <path d="${path(2)}" fill="none" stroke="#e34948" stroke-width="1" stroke-opacity=".7"/>
+    <path d="${path(3)}" fill="none" stroke="#1baf7a" stroke-width="1.8"/></svg>`;
 }
 
 export function fieldAccuracyHtml(d) {
@@ -93,7 +93,7 @@ export function fieldAccuracyHtml(d) {
   <div class="card" style="margin-top:16px"><h3>4. Compared with Copernicus LAI 300 m (10-daily, seasons 2021–2025)</h3>
     <p>Our 10 m LAI averaged over each 300 m cell inside the areas: typical difference ${n2(pooled("after").rmse)} LAI, ours ${n2(Math.abs(pooled("after").bias))} lower on average, correlation <b>${n2(pooled("after").r)}</b> (before the bad-image fix: ${n2(pooled("before").rmse)}, ${n2(Math.abs(pooled("before").bias))}, ${n2(pooled("before").r)}). In spring ours is about 0.3 lower; a 300 m cell also contains grass, hedges and trees that green up earlier than fields.</p>
     <div class="acc-grid wide">${charts}</div>
-    <p class="note">— Copernicus LAI 300 m · <span style="color:#4caf7d">—</span> ours, after the fix · <span style="color:#e0562a">—</span> ours, before · mean of all 300 m cells of each area, every 10 days</p></div>
+    <p class="note">— Copernicus LAI 300 m · <span style="color:#1baf7a">—</span> ours, after the fix · <span style="color:#e34948">—</span> ours, before · mean of all 300 m cells of each area, every 10 days</p></div>
   <div class="card" style="margin-top:16px"><h3>Limits</h3><ul>
     <li>The Landsat LAI used as truth for cloudy weeks is made with our own retrieval method (applied to Landsat images); a truth independent of our method (ground measurements) is still to come.</li>
     <li>All tests used seasons 2021–2025, which also guided the design; a final check on season 2026 follows once all methods are fixed.</li>

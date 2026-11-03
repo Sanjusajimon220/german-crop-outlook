@@ -2,135 +2,146 @@
 <title>German Crop Outlook</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#0a0e1a">
+<meta name="theme-color" content="#003247">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Crop Outlook">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
 <style>
-/* Layout: control strip on top, map left + district panel right (stacks on phones); tabs for Accuracy / Method */
-/* Groundtruth-earth frame: dark navy first (as groundtruth-earth.netlify.app), light variant for light-mode viewers */
+/* Layout: navy top bar, control strip, map left + district panel right (stacks on phones); tabs for Accuracy / Method */
+/* Design v2 (2026-11-03): light institutional style (ESA-like): one navy brand colour, one teal accent, Inter only.
+   Design v1 (dark, Space Grotesk / IBM Plex) is kept as git tag design-v1. */
 :root{
-  --bg:#0a0e1a; --panel:#161e33; --ink:#eef1f8; --muted:#8b96b4; --line:#26304a;
-  --accent:#f2a93b; --accent-soft:#3a2f1a; --good:#7cc4ec; --bad:#e0562a; --violet:#6b3f97;
-  --f-display:"Space Grotesk",system-ui,sans-serif;
-  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
-  --f-mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
-  color-scheme:dark;
+  --bg:#f4f6f8; --panel:#ffffff; --ink:#1b2a38; --muted:#5b6b7a; --line:#d5dbe1;
+  --brand:#003247; --accent:#00857a; --accent-fill:#00ae9d; --accent-soft:#e0f4f2;
+  --good:#1f7a4d; --bad:#b8402a; --violet:#6b3f97;
+  --f-display:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-body:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:light;
 }
-@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){
-  --bg:#f4f6fb; --panel:#ffffff; --ink:#0d2c54; --muted:#4a5f8f; --line:#dbe3f5;
-  --accent:#b9741a; --accent-soft:#fbecd2; --good:#2b6fb5; --bad:#c44a22; --violet:#6b3f97; color-scheme:light}}
-:root[data-theme="light"]{
-  --bg:#f4f6fb; --panel:#ffffff; --ink:#0d2c54; --muted:#4a5f8f; --line:#dbe3f5;
-  --accent:#b9741a; --accent-soft:#fbecd2; --good:#2b6fb5; --bad:#c44a22; --violet:#6b3f97; color-scheme:light}
 *{box-sizing:border-box}
-body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--f-body);padding-block:0 32px;padding-inline:16px;margin:0}
-.wrap{max-width:1280px;margin:0 auto}
-header{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 24px;padding-block:18px 10px;border-bottom:1px solid var(--line)}
-h1{font:600 28px/1.1 var(--f-display);letter-spacing:.01em;margin:0}
-.tag{font:500 12px var(--f-mono);color:var(--muted)}
-nav{display:flex;gap:4px;margin-left:auto}
-nav button{font:600 14px var(--f-display);letter-spacing:.04em;text-transform:uppercase;background:none;border:1px solid transparent;color:var(--muted);padding:6px 12px;border-radius:6px;cursor:pointer}
-nav button[aria-selected="true"]{color:var(--ink);border-color:var(--line);background:var(--panel)}
-nav button:focus-visible,select:focus-visible,input:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.controls{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:end;padding-block:14px}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--f-body);font-variant-numeric:tabular-nums;padding:0 0 32px;margin:0}
+a{color:var(--accent)}
+.wrap{max-width:1280px;margin:0 auto;padding-inline:16px}
+.topbar{background:var(--brand);color:#fff}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:6px 24px;padding-block:12px}
+h1{font:600 19px/1.2 var(--f-display);margin:0;letter-spacing:-.005em}
+.tag{font:400 13px var(--f-body);color:#b9c8d4}
+.tag a{color:#fff}
+nav{display:flex;gap:2px;margin-left:auto;align-items:center}
+nav button{font:500 14px var(--f-body);background:none;border:0;border-bottom:2px solid transparent;color:#c9d6e0;padding:8px 12px;cursor:pointer;border-radius:0}
+nav button:hover{color:#fff}
+nav button[aria-selected="true"]{color:#fff;border-bottom-color:var(--accent-fill)}
+nav button:focus-visible,select:focus-visible,input:focus-visible,button:focus-visible{outline:2px solid var(--accent-fill);outline-offset:2px}
+.controls{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:end;padding:14px 16px;margin:16px 0;background:var(--panel);border:1px solid var(--line);border-radius:4px}
 .ctl{display:flex;flex-direction:column;gap:4px;min-width:0}
-.ctl label{font:600 11px var(--f-body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-select{font:15px var(--f-body);padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink)}
+.ctl label{font:500 12px var(--f-body);color:var(--muted)}
+select{font:14px var(--f-body);padding:6px 8px;border:1px solid #b8c2cc;border-radius:4px;background:var(--panel);color:var(--ink)}
+input[type=range]{accent-color:var(--accent-fill)}
+.maptitle{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 10px;margin:0 0 8px}
+.maptitle b{font:600 16px var(--f-display);color:var(--brand)}
+.maptitle span{font-size:13px;color:var(--muted)}
+input[type=text],input[type=search],input[type=date],input[type=number]{font:14px var(--f-body);padding:5px 8px;border:1px solid #b8c2cc;border-radius:4px;background:var(--panel);color:var(--ink)}
+button{font:500 13px var(--f-body);color:var(--brand);background:var(--panel);border:1px solid #b8c2cc;border-radius:4px;padding:5px 12px;cursor:pointer}
+button:hover{border-color:var(--brand)}
 .lead{flex:1 1 280px}
-.lead input{width:100%;accent-color:var(--accent)}
-.leadval{font:500 13px var(--f-mono)}
+.leadrow{display:flex;align-items:center;gap:10px}
+.lead input{flex:1;width:100%;accent-color:var(--accent-fill)}
+.play{width:32px;height:32px;flex:none;border-radius:50%;border:0;background:var(--brand);color:#fff;padding:0;display:inline-flex;align-items:center;justify-content:center}
+.play:hover{background:#0a4a66}
+.play svg{width:14px;height:14px;fill:currentColor}
+.leadval{font:400 13px var(--f-body);color:var(--muted)}
 .grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:16px}
 @media (max-width:860px){.grid{grid-template-columns:minmax(0,1fr)}}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:16px;min-width:0}
 .mapbox{position:relative}
 #map{width:100%;height:auto;display:block}
-#map path.d{stroke:var(--bg);stroke-width:.35;cursor:pointer}
-#map path.d:hover,#map path.sel{stroke:var(--ink);stroke-width:1.4}
-.legend{display:flex;align-items:center;gap:8px;font:12px var(--f-mono);color:var(--muted);flex-wrap:wrap}
-.legend .bar{height:10px;flex:1 1 160px;border-radius:3px}
-.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0}
-.kpi{border:1px solid var(--line);border-radius:8px;padding:8px}
-.kpi .k{font:600 11px var(--f-body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
-.kpi .v{font:600 22px var(--f-display);font-variant-numeric:tabular-nums}
-.kpi .s{font:12px var(--f-mono);color:var(--muted)}
-h2{font:600 20px var(--f-display);margin:0 0 4px;text-wrap:balance}
-h3{font:600 13px var(--f-body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+#map path.d{stroke:#33475b;stroke-opacity:.5;stroke-width:.45;cursor:pointer}
+#map path.d:hover,#map path.sel{stroke:var(--brand);stroke-opacity:1;stroke-width:1.4}
+.legend{display:flex;align-items:center;gap:8px;font:12px var(--f-body);color:var(--muted);flex-wrap:wrap}
+.legend .bar{height:10px;flex:1 1 160px;border-radius:2px}
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0}
+.kpi{background:var(--bg);border-radius:4px;padding:8px 10px}
+.kpi .k{font:500 12px var(--f-body);color:var(--muted)}
+.kpi .v{font:600 22px var(--f-display);color:var(--brand)}
+.kpi .s{font:12px var(--f-body);color:var(--muted)}
+h2{font:600 18px var(--f-display);margin:0 0 4px;text-wrap:balance;color:var(--ink)}
+h3{font:600 14px var(--f-body);color:var(--ink);margin:18px 0 6px}
 .note{font-size:13px;color:var(--muted)}
 .chart{width:100%;height:auto;display:block}
-.chart text{fill:var(--muted);font:11px var(--f-mono)}
+.chart text{fill:var(--muted);font:11px var(--f-body)}
 .chart .ax{stroke:var(--line)}
 button:disabled{opacity:.4;cursor:not-allowed}
 #mf-detail h4.step{margin:16px 0 6px;font-size:14px;color:var(--accent)}
-.pill{display:inline-block;font:600 11px var(--f-mono);padding:2px 7px;border-radius:999px;background:var(--accent-soft);color:var(--ink)}
-.pill.good{background:color-mix(in srgb,var(--good) 18%,transparent)}
-.pill.bad{background:color-mix(in srgb,var(--bad) 18%,transparent)}
+.pill{display:inline-block;font:500 12px var(--f-body);padding:2px 8px;border-radius:3px;background:var(--accent-soft);color:#005c53}
+.pill.good{background:#e3f1e8;color:#1b5e3b}
+.pill.bad{background:#f8e6e1;color:#8a2f1d}
 table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
-th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;font-size:14px;white-space:nowrap}
+th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right;font-size:14px;white-space:nowrap}
 th:first-child,td:first-child{text-align:left}
-th{font:600 11px var(--f-body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+th{font:600 12px var(--f-body);color:var(--muted)}
 .tbl{overflow-x:auto}
 .win{color:var(--good);font-weight:600}.lose{color:var(--bad)}
 .prose{max-width:72ch}
-.prose p,.prose li{line-height:1.6}
+.prose p,.prose li{line-height:1.65}
 section[hidden],.ctl[hidden]{display:none}
-.install{margin-left:8px;border:1px solid var(--accent);color:var(--accent);background:none;border-radius:6px;padding:5px 12px;font:600 13px var(--f-body);cursor:pointer}
+.install{margin-left:8px;border:1px solid #fff;color:#fff;background:none;border-radius:4px;padding:5px 12px;font:500 13px var(--f-body);cursor:pointer}
 .install[hidden],.offline[hidden]{display:none}
-.offline{margin:8px 0 0;padding:6px 10px;border-radius:6px;background:var(--accent-soft);color:var(--ink);font-size:13px}
+.offline{margin:8px 0 0;padding:6px 10px;border-radius:4px;background:var(--accent-soft);color:var(--ink);font-size:13px;width:100%}
 #map path.f,#map path.area{vector-effect:non-scaling-stroke}
-.crop{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:999px;background:color-mix(in srgb,var(--c) 18%,transparent);color:var(--ink);font-size:.85em;font-weight:500;white-space:nowrap;vertical-align:middle}.crop i{width:9px;height:9px;border-radius:50%;background:var(--c)}
-.mf-layout{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(360px,1fr);gap:16px;padding-block:14px;align-items:start}
+.crop{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:3px;background:color-mix(in srgb,var(--c) 16%,transparent);color:var(--ink);font-size:.85em;font-weight:500;white-space:nowrap;vertical-align:middle}.crop i{width:9px;height:9px;border-radius:50%;background:var(--c)}
+.mf-layout{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(360px,1fr);gap:16px;padding-block:16px;align-items:start}
 @media (max-width:1050px){.mf-layout{grid-template-columns:minmax(0,1fr)}}
 .mf-side{display:grid;gap:16px}
-.mf-h{margin:0;font:600 19px var(--f-display)}
+.mf-h{margin:0;font:600 18px var(--f-display)}
 .mf-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 .mf-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:14px 0}
 @media (max-width:640px){.mf-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.stat{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg)}
-.stat .k,.legendlist .k{font:600 11px var(--f-body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-.stat .v{font:600 21px var(--f-display);line-height:1.25}
+.stat{border-radius:4px;padding:8px 10px;background:var(--bg)}
+.stat .k,.legendlist .k{font:500 12px var(--f-body);color:var(--muted)}
+.stat .v{font:600 21px var(--f-display);line-height:1.25;color:var(--brand)}
 .mf-mapgrid{display:grid;grid-template-columns:minmax(0,1fr) 230px;gap:14px;align-items:start}
 @media (max-width:720px){.mf-mapgrid{grid-template-columns:minmax(0,1fr)}}
-#mf-areamap{width:100%;display:block;background:var(--bg);border-radius:8px;border:1px solid var(--line)}
+#mf-areamap{width:100%;display:block;background:#e9edf1;border-radius:4px;border:1px solid var(--line)}
 #mf-areamap[hidden],#mf-animbox[hidden]{display:none}
-.legendlist button{display:grid;grid-template-columns:12px minmax(0,1fr) auto;gap:4px 8px;align-items:center;width:100%;background:none;border:1px solid transparent;border-radius:6px;padding:5px 7px;color:var(--ink);cursor:pointer;text-align:left;font:13px var(--f-body)}
+.legendlist button{display:grid;grid-template-columns:12px minmax(0,1fr) auto;gap:4px 8px;align-items:center;width:100%;background:none;border:1px solid transparent;border-radius:4px;padding:5px 7px;color:var(--ink);cursor:pointer;text-align:left;font:13px var(--f-body)}
 .legendlist button:hover{background:var(--bg)}
 .legendlist button.on{border-color:var(--line);background:var(--bg)}
-.legendlist i{width:12px;height:12px;border-radius:3px;background:var(--c)}
+.legendlist i{width:12px;height:12px;border-radius:2px;background:var(--c)}
 .legendlist .bar{grid-column:2/4;height:3px;border-radius:2px;background:var(--line);overflow:hidden}
 .legendlist .bar span{display:block;height:100%;background:var(--c)}
 .tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:12px 0}
-.tabs button{background:none;border:0;border-bottom:2px solid transparent;color:var(--muted);padding:7px 10px;cursor:pointer;font:600 13px var(--f-body)}
-.tabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
+.tabs button{background:none;border:0;border-bottom:2px solid transparent;border-radius:0;color:var(--muted);padding:7px 10px;cursor:pointer;font:500 14px var(--f-body)}
+.tabs button.on{color:var(--brand);border-bottom-color:var(--accent-fill)}
 .flist{display:grid;gap:6px}
-.frow{display:grid;grid-template-columns:minmax(0,1fr) auto 28px;gap:10px;align-items:center;padding:8px 10px 8px 12px;border:1px solid var(--line);border-left:4px solid var(--c);border-radius:8px;cursor:pointer}
+.frow{display:grid;grid-template-columns:minmax(0,1fr) auto 28px;gap:10px;align-items:center;padding:8px 10px 8px 12px;border:1px solid var(--line);border-left:4px solid var(--c);border-radius:0 4px 4px 0;cursor:pointer}
 .frow:hover,.frow.on{background:var(--bg)}
 .fval{text-align:right}
 .frow .x{background:none;border:0;color:var(--muted);cursor:pointer;font-size:14px}
 .crops{display:flex;flex-wrap:wrap;gap:6px}.crop.chip{border:1px solid transparent;cursor:pointer;font:inherit;font-size:.85em}.crop.chip.on{border-color:var(--c)}
-.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}.seg button{border:0;border-radius:0;background:transparent;color:var(--muted);padding:4px 10px;cursor:pointer}.seg button.on{background:var(--accent);color:#111}
-#mapg.fieldmode path.d{fill:#232a3a;stroke:#2f384c}
-#map path.area{fill:var(--accent);fill-opacity:.12;stroke:var(--accent);stroke-opacity:.7;stroke-width:6;vector-effect:non-scaling-stroke;cursor:zoom-in}
-#map path.f{stroke:var(--ink);stroke-opacity:.55;stroke-width:.6;cursor:pointer}
-#map path.f.sel{stroke:var(--accent);stroke-opacity:1;stroke-width:2.2}
-@media print{header,nav,.controls,#page-explore,#page-accuracy,#page-method,#mf-list button,#mf-detail button,#mf-detail input[type=date]{display:none!important}
+.seg{display:inline-flex;border:1px solid #b8c2cc;border-radius:4px;overflow:hidden}.seg button{border:0;border-radius:0;background:transparent;color:var(--muted);padding:4px 10px;cursor:pointer}.seg button.on{background:var(--brand);color:#fff}
+#mapg.fieldmode path.d{fill:#e3e8ec;stroke:#c9d1d8}
+#map path.area{fill:var(--accent-fill);fill-opacity:.15;stroke:var(--accent);stroke-opacity:.9;stroke-width:6;vector-effect:non-scaling-stroke;cursor:zoom-in}
+#map path.f{stroke:var(--ink);stroke-opacity:.45;stroke-width:.6;cursor:pointer}
+#map path.f.sel{stroke:var(--brand);stroke-opacity:1;stroke-width:2.2}
+@media print{.topbar,nav,.controls,#page-explore,#page-accuracy,#page-method,#mf-list button,#mf-detail button,#mf-detail input[type=date]{display:none!important}
   #page-myfields{display:block!important} body{background:#fff;color:#000}}
-#acc-field svg.chart{width:100%;max-width:620px;height:auto;font:11px var(--f-mono);fill:var(--muted);color:var(--ink)}
+#acc-field svg.chart{width:100%;max-width:620px;height:auto;font:11px var(--f-body);fill:var(--muted);color:var(--ink)}
 #acc-field svg .grid{stroke:var(--muted);stroke-opacity:.2} #acc-field svg .zero,#acc-field svg .diag{stroke:var(--ink);stroke-opacity:.6;stroke-dasharray:4 3}
 #acc-field .acc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:12px 24px;align-items:start}
 #acc-field .acc-grid.wide{grid-template-columns:repeat(auto-fit,minmax(min(440px,100%),1fr))} #acc-field h4{margin:10px 0 6px;font-size:14px} #acc-field ul{margin:6px 0 0 18px;padding:0} #acc-field li{margin:4px 0}
-#acc-field table.heat{border-collapse:collapse;font:12px var(--f-mono)} #acc-field table.heat td,#acc-field table.heat th{padding:5px 10px;border:1px solid var(--line);text-align:center}
+#acc-field table.heat{border-collapse:collapse;font:12px var(--f-body)} #acc-field table.heat td,#acc-field table.heat th{padding:5px 10px;border:1px solid var(--line);text-align:center}
 #acc-field table.heat td:first-child{text-align:left}
-.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font:12px/1.5 var(--f-mono);box-shadow:0 2px 8px rgba(0,0,0,.25);display:none;z-index:2;max-width:280px}
+.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:8px 10px;font:12px/1.5 var(--f-body);box-shadow:0 2px 6px rgba(16,40,60,.12);display:none;z-index:2;max-width:280px}
 </style>
 
-<div class="wrap">
+<div class="topbar"><div class="wrap">
 <header>
   <h1>German Crop Outlook</h1>
-  <span class="tag"><a href="../investigations.html" style="color:var(--accent);text-decoration:none">← Groundtruth-earth</a> · district yield forecasts · model v12 · field level: NRW study areas (zoom in on the map) · <a href="https://github.com/Sanjusajimon220/german-crop-outlook" style="color:var(--muted)">code</a></span>
+  <span class="tag"><a href="../investigations.html" style="text-decoration:none">← Groundtruth-earth</a> · district yield forecasts · model v12 · field level: NRW study areas (zoom in on the map) · <a href="https://github.com/Sanjusajimon220/german-crop-outlook">code</a></span>
   <nav role="tablist" aria-label="Pages">
     <button role="tab" id="tab-explore" aria-selected="true" data-page="explore">Explorer</button>
     <button role="tab" id="tab-my" aria-selected="false" data-page="myfields">My fields</button>
@@ -140,13 +151,16 @@ section[hidden],.ctl[hidden]{display:none}
   </nav>
   <div id="offline-note" class="offline" hidden>Offline: showing the data stored on this device (district maps, fields you have viewed or saved).</div>
 </header>
+</div></div>
+<div class="wrap">
 
 <section id="page-explore">
   <div class="controls">
     <div class="ctl"><label for="crop">Crop</label><select id="crop"></select></div>
     <div class="ctl"><label for="year">Season</label><select id="year"></select></div>
     <div class="ctl lead"><label for="lead">Forecast date</label>
-      <input type="range" id="lead" min="0" max="5" step="1" value="3" aria-describedby="leadval">
+      <div class="leadrow"><button type="button" class="play" id="play" aria-label="Play through the forecast dates" title="Play"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg></button>
+      <input type="range" id="lead" min="0" max="5" step="1" value="3" aria-describedby="leadval"></div>
       <span class="leadval" id="leadval"></span></div>
     <div class="ctl"><label for="layer">Map shows</label><select id="layer">
       <option value="median">Forecast yield (t/ha)</option>
@@ -171,6 +185,7 @@ section[hidden],.ctl[hidden]{display:none}
   </div>
   <div class="grid">
     <div class="card mapbox">
+      <div class="maptitle" id="maptitle"></div>
       <svg id="map" viewBox="0 0 560 720" role="img" aria-label="Map of German districts coloured by the selected value; NRW study areas open the field level"><g id="mapg"></g></svg>
       <div class="tip" id="tip"></div>
       <div class="legend" id="legend"></div>
@@ -262,20 +277,40 @@ function valueFor(code) {
   if (S.layer === "width") return r[1] != null ? r[2] - r[1] : null;
 }
 
+// one colour scale per crop and layer over ALL seasons and forecast dates (3-97 % of the values), so the map changes
+// when the date or season changes; a scale fitted to each map alone would make every map look the same
+const DOMAINS = {};
+function stableDomain() {
+  const k = `${S.crop}|${S.layer}`;
+  if (DOMAINS[k]) return DOMAINS[k];
+  const keep = [S.year, S.lead], vals = [];
+  for (const y of META.crops[S.crop].years) for (let l = 0; l < LEADS.length; l++) {
+    S.year = y; S.lead = l;
+    for (const f of GEO.features) { const v = valueFor(f.properties.code); if (v != null && isFinite(v)) vals.push(v); }
+  }
+  [S.year, S.lead] = keep;
+  vals.sort(d3.ascending);
+  return (DOMAINS[k] = [d3.quantile(vals, 0.03), d3.quantile(vals, 0.97)]);
+}
+
+const LAYER_NAMES = { median: "Forecast yield", official: "Official yield", dev: "Forecast vs official", width: "80 % range width",
+  water: "Water supply", wuse: "Water use", wdem: "Water demand", ndvi: "Satellite greenness (NDVI)" };
+
 function drawMap() {
   const svg = d3.select("#map"), W = 560, H = 720;
   const proj = d3.geoMercator().fitSize([W, H], GEO), path = d3.geoPath(proj);
-  const vals = GEO.features.map(f => valueFor(f.properties.code)).filter(v => v != null);
   let scale, domain;
-  const lo = d3.quantile(vals.slice().sort(d3.ascending), 0.03), hi = d3.quantile(vals.slice().sort(d3.ascending), 0.97);
-  // standard agronomic scales: yield red-yellow-green (as in common yield-mapping software),
-  // forecast vs official blue (too low) - white - red (too high), water red (stressed) - blue, range width one hue
+  const [lo, hi] = stableDomain();
+  const c0 = META.crops[S.crop];
+  document.getElementById("maptitle").innerHTML = `<b>${c0.label}</b><span>${LAYER_NAMES[S.layer]} · season ${S.year} · ${doyDate(S.year, c0.leads[LEADS[S.lead]])}, ${LEADS[S.lead] === "0" ? "at harvest" : LEADS[S.lead] + " weeks before harvest"}</span>`;
+  // standard scales: yield one green hue light -> dark (sequential, colour-blind safe), forecast vs official
+  // blue (too low) - white - red (too high), water red (stressed) - blue, range width one hue
   if (S.layer === "dev") { const m = Math.max(5, Math.abs(lo || 0), Math.abs(hi || 0)); domain = [-m, m]; scale = d3.scaleDiverging(t => d3.interpolateRdBu(1 - t)).domain([-m, 0, m]); }
   else if (S.layer === "water") { domain = [Math.min(lo ?? .5, .99), 1]; scale = d3.scaleSequential(d3.interpolateRdYlBu).domain(domain); }
   else if (S.layer === "wuse" || S.layer === "wdem") { domain = [lo ?? 0, hi ?? 1]; scale = d3.scaleSequential(d3.interpolateBlues).domain([domain[0] - (domain[1] - domain[0]) * 0.25, domain[1]]); }
-  else if (S.layer === "ndvi") { domain = [lo ?? 0, hi ?? 1]; scale = d3.scaleSequential(d3.interpolateYlGn).domain(domain); }
+  else if (S.layer === "ndvi") { domain = [lo ?? 0, hi ?? 1]; scale = d3.scaleSequential(t => d3.interpolateYlGn(0.2 + 0.8 * t)).domain(domain); }
   else if (S.layer === "width") { domain = [lo ?? 0, hi ?? 1]; scale = d3.scaleSequential(d3.interpolatePurples).domain([domain[0] - (domain[1] - domain[0]) * 0.3, domain[1]]); }
-  else { domain = [lo ?? 0, hi ?? 1]; scale = d3.scaleSequential(d3.interpolateRdYlGn).domain(domain); }
+  else { domain = [lo ?? 0, hi ?? 1]; scale = d3.scaleSequential(t => d3.interpolateYlGn(0.2 + 0.8 * t)).domain(domain); }
   const sel = d3.select("#mapg").selectAll("path.d").data(GEO.features, f => f.properties.code);
   sel.join("path").attr("class", f => "d" + (f.properties.code === S.sel ? " sel" : "")).attr("d", path)
     .attr("fill", f => { const v = valueFor(f.properties.code); return v == null ? css("--line") : scale(v); })
@@ -411,6 +446,20 @@ document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
   document.getElementById("lead").oninput = e => { if (window.FIELDMODE && window.FIELDMODE.active) return window.FIELDMODE.onSlide(+e.target.value);
     S.lead = +e.target.value; setLeadLabel(); drawMap(); drawPanel(); };
   document.getElementById("layer").onchange = e => { S.layer = e.target.value; drawMap(); };
+  // play / pause: steps the slider (forecast dates, or weeks at the field level) once a second; from the end it restarts
+  const play = document.getElementById("play"), lead = document.getElementById("lead");
+  const ICON = { play: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg>',
+                 pause: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 2.5h3v11h-3zM9.5 2.5h3v11h-3z"/></svg>' };
+  let timer = null;
+  const stop = () => { clearInterval(timer); timer = null; play.innerHTML = ICON.play; play.title = "Play"; play.setAttribute("aria-label", "Play through the forecast dates"); };
+  const step = () => { if (+lead.value >= +lead.max) return stop(); lead.value = +lead.value + 1; lead.dispatchEvent(new Event("input")); };
+  play.onclick = () => {
+    if (timer) return stop();
+    if (+lead.value >= +lead.max) { lead.value = lead.min; lead.dispatchEvent(new Event("input")); }
+    play.innerHTML = ICON.pause; play.title = "Pause"; play.setAttribute("aria-label", "Pause");
+    timer = setInterval(step, 1000);
+  };
+  lead.addEventListener("pointerdown", stop);                  // grabbing the slider stops the animation
   accuracyTables();
   await refresh();
   try {                                   // field level: optional; a failure here must never break the district app

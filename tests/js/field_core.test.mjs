@@ -1,6 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc , leavesField, clearRgbDate, fieldUrl, noDataReason, zoomAllowed, areaToEnter, groupMedian, exportCheck, fieldRgbDate, areaRgbDate, legendSpec, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS, CLASS_STYLES, classLegend, classByCrop, stageMarks, calendarChart } from "../../docs/js/field_core.js";
+import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc , leavesField, clearRgbDate, fieldUrl, noDataReason, zoomAllowed, areaToEnter, groupMedian, exportCheck, fieldRgbDate, areaRgbDate, legendSpec, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS, CLASS_STYLES, classLegend, classByCrop, stageMarks, calendarChart, playIcon, nextFrame } from "../../docs/js/field_core.js";
+
+test("play / pause icon and the next frame of a time slider (stops at the end unless it loops)", () => {
+  assert.match(playIcon(false), /<path d="M4 2.5v11l9-5.5z"/);
+  assert.equal((playIcon(true).match(/h3v11h-3z/g) || []).length, 2);
+  assert.equal(nextFrame(3, 5), 4);
+  assert.equal(nextFrame(5, 5), null);
+  assert.equal(nextFrame(5, 5, true), 0);
+});
 
 const calWeeks = ["2024-10-07", "2024-10-14", "2024-10-21", "2024-10-28", "2024-11-04"];
 
