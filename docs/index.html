@@ -371,6 +371,73 @@ function ndviChart(code) {
     <path d="${line(now)}" fill="none" stroke="${css("--good")}" stroke-width="2.2"/></svg>`;
 }
 
+// chart that follows "Map shows": districts of the selected area are averaged for Germany and the states
+const inArea = code => GEO.features.map(f => f.properties.code).filter(k => code === "DE" || k.startsWith(code));
+const meanOf = vals => { const v = vals.filter(x => x != null && isFinite(x)); return v.length ? d3.mean(v) : null; };
+const ndviDoy = s => { const [m, d] = s.split("-").map(Number); return (Date.UTC(2021, m - 1, d) - Date.UTC(2021, 0, 1)) / 864e5; };
+
+function ndviSeries(code, year) {
+  const N = NDVI && NDVI[year]; if (!N) return null;
+  const ks = code.length === 5 ? [code] : inArea(code).filter(k => N.v[k]);
+  if (!ks.length) return null;
+  return N.dates.map((s, i) => [ndviDoy(s), meanOf(ks.map(k => N.v[k] && N.v[k][i]))]);
+}
+
+function ndviLayerChart(code) {
+  const now = ndviSeries(code, S.year); if (!now || now.every(p => p[1] == null)) return "";
+  const bins = {};                                      // average of the other seasons, per 16-day composite
+  for (const yr of Object.keys(NDVI)) if (yr !== S.year && yr !== "2026") for (const [d, v] of ndviSeries(code, yr) || [])
+    if (v != null) (bins[Math.round(d / 16)] = bins[Math.round(d / 16)] || []).push([d, v]);
+  const avg = Object.keys(bins).map(Number).sort((a, b) => a - b).map(k => [d3.mean(bins[k], p => p[0]), d3.mean(bins[k], p => p[1])]);
+  const W = 460, H = 190, L = 34, R = 10, T = 12, B = 24;
+  const x = d3.scaleLinear().domain([30, 300]).range([L, W - R]), y = d3.scaleLinear().domain([0, 0.95]).range([H - B, T]);
+  const line = d3.line().defined(p => p[1] != null).x(p => x(p[0])).y(p => y(p[1]));
+  const fd = META.crops[S.crop].leads[LEADS[S.lead]] - 1;
+  const mt = [["Feb", 32], ["Apr", 91], ["Jun", 152], ["Aug", 213], ["Oct", 274]].map(([n, d]) => `<text x="${x(d)}" y="${H - 6}" text-anchor="middle">${n}</text>`).join("");
+  const yt = [0.2, 0.4, 0.6, 0.8].map(t => `<line class="ax" x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}"/><text x="${L - 5}" y="${y(t) + 4}" text-anchor="end">${t}</text>`).join("");
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Satellite greenness this season and on average">${yt}${mt}
+    <path d="${line(avg)}" fill="none" stroke="${css("--muted")}" stroke-width="1.6" stroke-dasharray="4 3"/>
+    <path d="${line(now)}" fill="none" stroke="${css("--good")}" stroke-width="2.4"/>
+    ${now.filter(p => p[1] != null).map(p => `<circle cx="${x(p[0])}" cy="${y(p[1])}" r="2.4" fill="${css("--good")}"><title>${doyDate(2021, Math.round(p[0]) + 1)}: NDVI ${fmt(p[1])}</title></circle>`).join("")}
+    <line x1="${x(fd)}" x2="${x(fd)}" y1="${T}" y2="${H - B}" stroke="${css("--ink")}" stroke-opacity=".5"/>
+    <text x="${x(fd) + 4}" y="${T + 10}">forecast date</text></svg>`;
+}
+
+function waterLayerChart(code) {
+  const W0 = S.data[S.crop].water, ks = code.length === 5 ? [code] : inArea(code);
+  const yrs = Object.keys(W0).filter(yr => yr !== "2026").map(yr => {
+    const rows = ks.map(k => W0[yr][k]).filter(Boolean);
+    return { yr, use: meanOf(rows.map(r => r[0])), dem: meanOf(rows.map(r => r[1])), ratio: meanOf(rows.map(r => r[2])) };
+  }).filter(p => p.use != null && p.dem != null);
+  if (yrs.length < 2) return "";
+  const W = 460, H = 200, L = 40, R = 10, T = 22, B = 24;
+  const x = d3.scaleBand().domain(yrs.map(p => p.yr)).range([L, W - R]).padding(0.25);
+  const y = d3.scaleLinear().domain([0, d3.max(yrs, p => p.dem) * 1.08]).nice().range([H - B, T]);
+  const blue = "#2a78d6";
+  const yt = y.ticks(4).map(t => `<line class="ax" x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}"/><text x="${L - 5}" y="${y(t) + 4}" text-anchor="end">${t}</text>`).join("");
+  const bars = yrs.map(p => { const on = p.yr === S.year, op = on ? 1 : 0.45, bx = x(p.yr), bw = x.bandwidth();
+    return `<g opacity="${op}"><title>${p.yr}: use ${fmt(p.use, 0)} mm of ${fmt(p.dem, 0)} mm demand (supply ${fmt(p.ratio)})</title>
+      <rect x="${bx}" y="${y(p.dem)}" width="${bw}" height="${y(0) - y(p.dem)}" fill="${blue}" fill-opacity=".22"/>
+      <rect x="${bx}" y="${y(p.use)}" width="${bw}" height="${y(0) - y(p.use)}" fill="${blue}"/>
+      <text x="${bx + bw / 2}" y="${y(p.dem) - 4}" text-anchor="middle"${on ? ` style="fill:${css("--ink")};font-weight:600"` : ""}>${fmt(p.ratio)}</text>
+      <text x="${bx + bw / 2}" y="${H - 8}" text-anchor="middle"${on ? ` style="fill:${css("--ink")};font-weight:600"` : ""}>${p.yr}</text></g>`; }).join("");
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Simulated crop water use and demand per season">${yt}${bars}
+    <text x="${L}" y="12">mm per season</text></svg>`;
+}
+
+function layerSection(code) {
+  const area = code === "DE" ? "average of all districts" : code.length === 2 ? "average of the state's districts" : "this district";
+  if (S.layer === "ndvi") {
+    const ch = ndviLayerChart(code);
+    return ch ? `<h3>Satellite greenness through the season</h3>${ch}<p class="note">Green: ${S.year}. Dashed: average of the other seasons 2018–2025. MODIS NDVI over all cropland, ${area}. Vertical line: forecast date.</p>` : "";
+  }
+  if (S.layer === "water" || S.layer === "wuse" || S.layer === "wdem") {
+    const ch = waterLayerChart(code);
+    return ch ? `<h3>Water use and demand by season</h3>${ch}<p class="note">Dark: simulated crop water use. Light: water demand. Number: supply ratio (use / demand; below 0.85 the crop is water-limited). Growth model, ${area}.</p>` : "";
+  }
+  return "";
+}
+
 function drawPanel() {
   const code = S.sel, c = META.crops[S.crop];
   const name = code === "DE" ? "Germany" : code.length === 2 ? META.states[code] : META.names[code] || code;
@@ -385,12 +452,13 @@ function drawPanel() {
     <div class="kpi"><div class="k">${code.length === 5 ? "State · Germany" : "Germany"}</div><div class="v">${code.length === 5 ? fmt(st && st[0]) : fmt(de && de[0])}</div><div class="s">${code.length === 5 ? "Germany " + fmt(de && de[0]) : "t/ha"}</div></div>
   </div>`;
   if (inside != null) h += `<p><span class="pill ${inside ? "good" : "bad"}">${inside ? "official yield inside the 80 % range" : "official yield outside the 80 % range"}</span></p>`;
+  h += layerSection(code);
   if (S.year !== "2026") h += `<h3>Through the season</h3>${fanChart(code)}<p class="note">Shaded: 80 % range. Dashed: official yield.</p>`;
   if (!r && code.length === 5) h += `<p class="note">No forecast for ${c.label.toLowerCase()} here: Destatis publishes no official district yield for this crop in this district and season (crop absent, city district, or small / confidential area). Satellite greenness below is still shown.</p>`;
   if (w && w[0] == null && w[2] != null) h += `<h3>Water (2026, simulated)</h3><p>Supply ratio <b>${fmt(w[2])}</b>${w[2] < 0.85 ? ' <span class="pill bad">water-limited</span>' : ""}</p>`;
   if (w && w[0] != null) h += `<h3>Water (simulated season)</h3><p>Crop water use <b>${fmt(w[0], 0)} mm</b> of a demand of <b>${fmt(w[1], 0)} mm</b> · supply ratio <b>${fmt(w[2])}</b>${w[2] < 0.85 ? ' <span class="pill bad">water-limited</span>' : ""}</p>`;
   if (code.length === 5 && window.FIELDVIEW) h += window.FIELDVIEW.districtFieldLine(code);
-  const nd = ndviChart(code);
+  const nd = S.layer === "ndvi" ? "" : ndviChart(code);          // already shown above when the map shows greenness
   if (nd) h += `<h3>Satellite greenness (MODIS NDVI, cropland)</h3>${nd}<p class="note">Green: ${S.year}. Grey: other seasons 2018-2026.</p>`;
   if (code.length === 5) h += `<p><button id="toState">Show ${META.states[code.slice(0, 2)]}</button> <button id="toDE">Show Germany</button></p>`;
   else if (code !== "DE") h += `<p><button id="toDE">Show Germany</button></p>`;
@@ -445,7 +513,7 @@ document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
     if (window.FIELDMODE && window.FIELDMODE.active) window.FIELDVIEW.enterField(window.FIELDVIEW.FV.area); };
   document.getElementById("lead").oninput = e => { if (window.FIELDMODE && window.FIELDMODE.active) return window.FIELDMODE.onSlide(+e.target.value);
     S.lead = +e.target.value; setLeadLabel(); drawMap(); drawPanel(); };
-  document.getElementById("layer").onchange = e => { S.layer = e.target.value; drawMap(); };
+  document.getElementById("layer").onchange = e => { S.layer = e.target.value; drawMap(); drawPanel(); };
   // play / pause: steps the slider (forecast dates, or weeks at the field level) once a second; from the end it restarts
   const play = document.getElementById("play"), lead = document.getElementById("lead");
   const ICON = { play: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg>',
