@@ -1,7 +1,7 @@
 // MY FIELDS: fields picked on the map (kept in this browser, no accounts), list + map, zones, rates, exports.
 import { loadMyFields, saveMyFields, zones, fmtUnc, sourceLabel, withinNoise, nearestRgbDate, clearRgbDate,
          affineFromCorners, invertAffine, applyAffine, groupMedian, exportCheck, noDataReason, fieldRgbDate,
-         seriesChart, SOURCE_COLOURS, legendSpec, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS, CLASS_STYLES, classLegend, classByCrop } from "./field_core.js";
+         seriesChart, SOURCE_COLOURS, legendSpec, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS, CLASS_STYLES, classLegend, classByCrop, stageMarks, calendarChart } from "./field_core.js";
 const badge = (g, c) => { const k = cropStyle(g, c); return `<span class="crop" style="--c:${k.colour}"><i></i>${k.label}</span>`; };
 
 import { buildTaskData } from "./isoxml.js";
@@ -142,7 +142,9 @@ async function openField(f) {
   const pb = await pixelBlock(f.area, f.year, f.id);
   const w0 = Math.max(0, d.series.weeks.findIndex(x => x >= (FV.active && FV.year === f.year ? d.series.weeks[FV.week] : `${f.year}-05-20`)));
   const mz = f.year === MZ_SEASON ? await multiZones(f.area) : null, zm = mz?.meta.fields[String(f.id)] || null;
-  CUR = { ...f, pb, s, geo, weeks: d.series.weeks, rgb: d.rgb, week: w0, layer: "lai", tab: CUR?.tab || "overview", mz, zm, zmode: zm ? "multi" : "period" };
+  const curve = d.calendar?.curves[d.calendar.fields[String(f.id)]] || null;          // crop calendar (wheat / barley only)
+  CUR = { ...f, pb, s, geo, weeks: d.series.weeks, rgb: d.rgb, week: w0, layer: "lai", tab: CUR?.tab || "overview", mz, zm, zmode: zm ? "multi" : "period",
+          curve, stages: curve ? d.calendar.stages[curve.crop] : [] };
   render();
   const arable = ARABLE.has(s.group), rates = ST.rates[f.id] || ["", "", ""];
   const det = document.getElementById("mf-detail"), cs = cropStyle(s.group, geo.properties.crop), saved = ST.fields.some(x => key(x) === key(f));
@@ -167,6 +169,10 @@ async function openField(f) {
     </div>
     <div data-pane="charts">
       <h3>Weekly green LAI</h3><div id="mf-lai-chart"></div>
+      ${CUR.curve ? `<h3>Season timing</h3><div id="mf-cal-chart"></div>
+      <p class="note">Expected crop stages from the regional crop calendar (fitted to DWD stage observations), run on this field's 1 km
+      weather cell from the district's typical sowing day (${CUR.curve.sowing}). Not measured on this field. The same stages appear as
+      dotted lines on the green LAI chart above.</p>` : ""}
       <h3>Weekly NDVI</h3><div id="mf-ndvi-chart"></div>
       <p class="note">${src}<br>Band: ± typical error. Shaded weeks: before sowing / after harvest. Dashed: selected week (Overview slider).</p>
     </div>
@@ -319,7 +325,9 @@ async function paint() {
     <div class="kpi"><div class="k">Green LAI</div><div class="v">${s.lai[w] == null ? "–" : fmtUnc(s.lai[w], s.lai_unc[w], 1)}</div><div class="s">${s.lai[w] == null ? noDataReason(s.src, w) || "no value" : sourceLabel(s.src[w])}</div></div>
     <div class="kpi"><div class="k">NDVI</div><div class="v">${s.ndvi[w] == null ? "–" : fmtUnc(s.ndvi[w], s.ndvi_unc[w], 2)}</div><div class="s">${s.ndvi[w] == null ? noDataReason(s.ndvi_src, w) || "no value" : sourceLabel(s.ndvi_src[w])}</div></div>
     <div class="kpi"><div class="k">Season</div><div class="v">${s.season[w] ? "in season" : "off-season"}</div><div class="s">${s.season[w] ? "the registered crop" : "previous crop / cover crop / bare soil"}</div></div>`;
-  const laiChart = seriesChart({ values: s.lai, unc: s.lai_unc, src: s.src, season: s.season, week: w, weeks: CUR.weeks, max: 6, label: "green LAI" });
+  const marks = CUR.curve ? stageMarks(CUR.curve.dates, CUR.stages, CUR.weeks) : [];        // expected crop stages (dotted)
+  const laiChart = seriesChart({ values: s.lai, unc: s.lai_unc, src: s.src, season: s.season, week: w, weeks: CUR.weeks, max: 6, label: "green LAI", marks });
+  if (CUR.curve) document.getElementById("mf-cal-chart").innerHTML = calendarChart({ curve: CUR.curve, stages: CUR.stages, weeks: CUR.weeks, week: w });
   const ndviChart = seriesChart({ values: s.ndvi, unc: s.ndvi_unc, src: s.ndvi_src, season: s.season, week: w, weeks: CUR.weeks, max: 1, label: "NDVI" });
   document.getElementById("mf-lai-chart").innerHTML = laiChart;
   document.getElementById("mf-ndvi-chart").innerHTML = ndviChart;

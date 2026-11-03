@@ -1,6 +1,33 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc , leavesField, clearRgbDate, fieldUrl, noDataReason, zoomAllowed, areaToEnter, groupMedian, exportCheck, fieldRgbDate, areaRgbDate, legendSpec, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS, CLASS_STYLES, classLegend, classByCrop } from "../../docs/js/field_core.js";
+import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc , leavesField, clearRgbDate, fieldUrl, noDataReason, zoomAllowed, areaToEnter, groupMedian, exportCheck, fieldRgbDate, areaRgbDate, legendSpec, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS, CLASS_STYLES, classLegend, classByCrop, stageMarks, calendarChart } from "../../docs/js/field_core.js";
+
+const calWeeks = ["2024-10-07", "2024-10-14", "2024-10-21", "2024-10-28", "2024-11-04"];
+
+test("stage marks sit at the stage date as a fractional week, unreached stages left out", () => {
+  const m = stageMarks({ emergence: "2024-10-17", heading: "2024-10-28", yellow_ripe: null }, ["emergence", "heading", "yellow_ripe"], calWeeks);
+  assert.deepEqual(m.map(x => x.stage), ["emergence", "heading"]);
+  assert.equal(m[0].i, 10 / 7);                       // 10 days after the first Monday
+  assert.equal(m[1].i, 3);
+  assert.equal(m[1].label, "heading");
+});
+
+test("calendar chart: curve, one dashed threshold per stage with its name, a dot where the curve reaches it", () => {
+  const curve = { dev: [null, 2, 5, 8, 12], thr: [3, 10], dates: { emergence: "2024-10-17", heading: "2024-11-01" } };
+  const svg = calendarChart({ curve, stages: ["emergence", "heading"], weeks: calWeeks, week: 4 });
+  assert.equal((svg.match(/stroke-dasharray="4 3"/g) || []).length, 2);
+  assert.ok(svg.includes(">emergence<") && svg.includes(">heading<"));
+  assert.equal((svg.match(/<circle/g) || []).length, 2);
+  assert.ok(!svg.includes("null") && !svg.includes("NaN"));
+  assert.match(calendarChart({ curve: null, stages: [], weeks: calWeeks, week: 0 }), /no crop calendar/i);
+});
+
+test("weekly chart draws optional stage marks as dotted vertical lines with a tooltip", () => {
+  const marks = stageMarks({ emergence: "2024-10-17", heading: "2024-10-28" }, ["emergence", "heading"], calWeeks);
+  const svg = seriesChart({ values: [1, 1, 1, 1, 1], unc: [0, 0, 0, 0, 0], src: [1, 1, 1, 1, 1], season: [1, 1, 1, 1, 1], week: 0, weeks: calWeeks, max: 4, label: "LAI", marks });
+  assert.equal((svg.match(/stroke-dasharray="1 2"/g) || []).length, 2);
+  assert.ok(svg.includes("<title>expected heading: 2024-10-28</title>"));
+});
 
 const weeks = ["2024-05-20", "2024-05-27", "2024-06-03"];
 

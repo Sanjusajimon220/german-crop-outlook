@@ -195,7 +195,8 @@ export const SOURCE_COLOURS = ["#555", "#4caf7d", "#7cc4ec", "#f2a93b", "#c07ad6
 
 // weekly chart as an SVG string (no DOM, no d3): +- band and line over the weeks with a value, one dot per week
 // coloured by its source, off-season weeks shaded, the selected week dashed
-export function seriesChart({ values, unc, src, season, week, weeks, max, label }) {
+// marks (optional, stageMarks): dotted vertical line per expected crop stage
+export function seriesChart({ values, unc, src, season, week, weeks, max, label, marks = [] }) {
   const n = values.length;
   if (!values.some(v => v != null)) return `<p class="note">No value this season for ${label}.</p>`;
   const W = 460, H = 160, L = 34, R = 10, T = 10, B = 24, f = v => +v.toFixed(1);
@@ -211,8 +212,40 @@ export function seriesChart({ values, unc, src, season, week, weeks, max, label 
   const months = weeks.map((w, i) => [w, i]).filter(([w]) => +w.slice(8, 10) <= 7 && ["11", "01", "03", "05", "07"].includes(w.slice(5, 7)))
     .map(([w, i]) => `<text x="${x(i)}" y="${H - 6}" text-anchor="middle">${["", "Jan", "", "Mar", "", "May", "", "Jul", "", "", "", "Nov"][+w.slice(5, 7)]}</text>`).join("");
   const dots = values.map((v, i) => (v == null ? "" : `<circle cx="${x(i)}" cy="${y(v)}" r="2.8" fill="${SOURCE_COLOURS[src[i]] || SOURCE_COLOURS[0]}"><title>${weeks[i]}: ${v}</title></circle>`)).join("");
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly ${label}">${off}${ticks}${months}
+  const stageLines = marks.map(m => `<line x1="${x(m.i)}" x2="${x(m.i)}" y1="${T}" y2="${H - B}" stroke="${STAGE_COLOUR}" stroke-width="1.2" stroke-dasharray="1 2"><title>expected ${m.label}: ${m.date}</title></line>`).join("");
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly ${label}">${off}${ticks}${months}${stageLines}
     <path d="${band}" fill="#8b96b4" fill-opacity=".22"/><path d="${line}" fill="none" stroke="#c9d2e6" stroke-width="1.4"/>${dots}
+    <line x1="${x(week)}" x2="${x(week)}" y1="${T}" y2="${H - B}" stroke="#8b96b4" stroke-dasharray="3 3"/></svg>`;
+}
+
+// crop calendar (phase25_calendar.py, calendar.json): stage names and where each stage falls on the weekly axis
+export const STAGE_LABELS = { emergence: "emergence", stem_extension: "stem extension", heading: "heading", milk_ripe: "milk ripe", yellow_ripe: "yellow ripe" };
+const STAGE_COLOUR = "#e0a43a";
+
+// stage date -> fractional week index (days after the first Monday / 7); stages not reached in the run are left out
+export function stageMarks(dates, stages, weeks) {
+  const t0 = Date.parse(weeks[0]);
+  return stages.filter(s => dates[s]).map(s => ({ stage: s, label: STAGE_LABELS[s] || s, date: dates[s], i: (Date.parse(dates[s]) - t0) / 864e5 / 7 }));
+}
+
+// development curve of the regional crop calendar on the same week axis as seriesChart: dashed stage thresholds with
+// their names, a dot where the curve reaches each one, the selected week dashed
+export function calendarChart({ curve, stages, weeks, week }) {
+  if (!curve || !curve.dev.some(v => v != null)) return `<p class="note">No crop calendar for this field (winter wheat and winter barley only).</p>`;
+  // the scale ends a little above the last stage (development keeps rising after ripeness and would squeeze the stages)
+  const n = weeks.length, top = Math.ceil((Math.max(...curve.thr) * 1.15) / 20) * 20;
+  const W = 460, H = 160, L = 34, R = 10, T = 10, B = 24, f = v => +v.toFixed(1);
+  const x = i => f(L + (n > 1 ? (i * (W - L - R)) / (n - 1) : 0)), y = v => f(H - B - (Math.max(0, Math.min(top, v)) / top) * (H - B - T));
+  const pts = curve.dev.map((v, i) => (v == null || v > top ? null : `${x(i)},${y(v)}`)).filter(Boolean);
+  const marks = stageMarks(curve.dates, stages, weeks);
+  const thr = stages.map((s, k) => `<line x1="${L}" x2="${W - R}" y1="${y(curve.thr[k])}" y2="${y(curve.thr[k])}" stroke="#8b96b4" stroke-opacity=".7" stroke-dasharray="4 3"/>
+    <text x="${W - R - 2}" y="${y(curve.thr[k]) - 3}" text-anchor="end">${STAGE_LABELS[s] || s}</text>`).join("");
+  const dots = marks.map(m => `<circle cx="${x(m.i)}" cy="${y(curve.thr[stages.indexOf(m.stage)])}" r="3.5" fill="${STAGE_COLOUR}"><title>expected ${m.label}: ${m.date}</title></circle>`).join("");
+  const ticks = [0, top / 2, top].map(t => `<text x="${L - 5}" y="${y(t) + 4}" text-anchor="end">${t}</text>`).join("");
+  const months = weeks.map((w, i) => [w, i]).filter(([w]) => +w.slice(8, 10) <= 7 && ["11", "01", "03", "05", "07"].includes(w.slice(5, 7)))
+    .map(([w, i]) => `<text x="${x(i)}" y="${H - 6}" text-anchor="middle">${["", "Jan", "", "Mar", "", "May", "", "Jul", "", "", "", "Nov"][+w.slice(5, 7)]}</text>`).join("");
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Crop calendar: development since sowing">${ticks}${months}${thr}
+    <path d="M${pts.join("L")}" fill="none" stroke="#c9d2e6" stroke-width="1.6"/>${dots}
     <line x1="${x(week)}" x2="${x(week)}" y1="${T}" y2="${H - B}" stroke="#8b96b4" stroke-dasharray="3 3"/></svg>`;
 }
 

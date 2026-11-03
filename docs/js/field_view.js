@@ -1,7 +1,7 @@
 // Field level in the EXPLORER: zoom from districts to the NRW study areas, fields and 10 m pixels.
 // Uses the globals of the district app (S, META, GEO, d3, css, fmt, rowFor, cropData, drawMap, drawPanel, doyDate, LEADS).
 import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, clearRgbDate, fmtUnc, affineFromCorners, leavesField,
-         fieldUrl, noDataReason, zoomAllowed, areaToEnter, fieldRgbDate, areaRgbDate, legendSpec, groupMedian, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary } from "./field_core.js";
+         fieldUrl, noDataReason, zoomAllowed, areaToEnter, fieldRgbDate, areaRgbDate, legendSpec, groupMedian, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary, stageMarks, calendarChart } from "./field_core.js";
 
 const BASE = "field/";
 const ENTER_K = 40;                                   // zoom factor at which an area switches to fields
@@ -18,8 +18,9 @@ const proj = () => d3.geoMercator().fitSize([560, 720], GEO);
 export async function loadSeason(area, year) {
   const k = `${area}_${year}`;
   if (!FV.cache[k]) {
-    const [geo, series, rgb] = await Promise.all([getJ(`${k}/fields.geojson`), getJ(`${k}/series.json`), getJ(`${k}/rgb.json`)]);
-    FV.cache[k] = { geo, series, rgb };
+    const [geo, series, rgb, calendar] = await Promise.all([getJ(`${k}/fields.geojson`), getJ(`${k}/series.json`), getJ(`${k}/rgb.json`),
+      getJ(`${k}/calendar.json`).catch(() => null)]);               // crop calendar: optional (wheat / barley fields only)
+    FV.cache[k] = { geo, series, rgb, calendar };
   }
   return FV.cache[k];
 }
@@ -91,7 +92,7 @@ export async function enterField(area) {
   FV.entering = false;
   FV.area = area; FV.year = year; FV.active = true;
   d3.select("#mapg").classed("fieldmode", true);              // districts in neutral grey: no forecast colour behind field gaps
-  FV.geo = d.geo; FV.series = d.series; FV.rgb = d.rgb;
+  FV.geo = d.geo; FV.series = d.series; FV.rgb = d.rgb; FV.calendar = d.calendar;
   FV.week = defaultWeek(FV.series.weeks);
   const p = proj(), [ul, ur, ll] = FV.idx.areas[area].corners_wgs84;
   const a = p(ul), b = p(ur), c = p(ll), cx = (b[0] + c[0]) / 2, cy = (b[1] + c[1]) / 2, k = 0.9 * 560 / Math.abs(b[0] - a[0]);
@@ -232,6 +233,9 @@ export async function fieldPanel(id) {
   const diff = s.lai[w] != null && med != null ? s.lai[w] - med : null;
   const vsMed = vsMedianText(s.lai[w], med, s.lai_unc[w]).replace(/ \(.*\)$/, "");
   const cs = cropStyle(P.group, P.crop);
+  // crop calendar of the field's weather cell (calendar.json): expected stages as dotted lines on the LAI chart
+  const cal = FV.calendar, curve = cal?.curves[cal.fields[String(id)]] || null, stages = curve ? cal.stages[curve.crop] : [];
+  const marks = curve ? stageMarks(curve.dates, stages, FV.series.weeks) : [];
   let h = `<h2><span class="crop" style="--c:${cs.colour}"><i></i>${cs.label}</span> Field ${id}</h2>
     <div class="note">${P.crop} (NRW register) · ${fmt(P.ha, 2)} ha · season ${FV.year} · week of ${wk} · re-analysis (past season)</div>
     ${P.partial ? '<p><span class="pill bad">only partly inside the study area: values cover the inside part</span></p>' : ""}
@@ -243,7 +247,11 @@ export async function fieldPanel(id) {
       <div class="kpi"><div class="k">vs median ${s.group}</div><div class="v">${vsMed}</div><div class="s">${diff == null ? (ARABLE.has(s.group) ? "too few fields" : "not compared (mixed group)") : withinNoise(diff, s.lai_unc[w] ?? 0) ? "within noise" : "beyond the uncertainty"}</div></div>
     </div>
     <p><span class="pill">${sourceLabel(s.src[w])}</span> ${s.alert[w] === 1 ? '<span class="pill bad">below the median field for 2 weeks</span>' : s.alert[w] === 2 ? '<span class="pill bad">falling while the median rises</span>' : ""}</p>
-    <h3>Weekly green LAI</h3>${seriesChart({ values: s.lai, unc: s.lai_unc, src: s.src, season: s.season, week: w, weeks: FV.series.weeks, max: 6, label: "green LAI" })}
+    <h3>Weekly green LAI</h3>${seriesChart({ values: s.lai, unc: s.lai_unc, src: s.src, season: s.season, week: w, weeks: FV.series.weeks, max: 6, label: "green LAI", marks })}
+    ${curve ? `<h3>Season timing</h3>${calendarChart({ curve, stages, weeks: FV.series.weeks, week: w })}
+    <p class="note">Expected crop stages from the regional crop calendar (fitted to DWD stage observations), run on this field's 1 km
+    weather cell from the district's typical sowing day (${curve.sowing}). Not measured on this field. The same stages appear as
+    dotted lines on the green LAI chart above. ${marks.map(m => `${m.label} ${m.date.slice(5)}`).join(" · ")}</p>` : ""}
     <h3>Weekly NDVI</h3>${seriesChart({ values: s.ndvi, unc: s.ndvi_unc, src: s.ndvi_src, season: s.season, week: w, weeks: FV.series.weeks, max: 1, label: "NDVI" })}
     <p class="note">${SOURCE_COLOURS.map((c, i) => i ? `<span style="margin-right:10px;white-space:nowrap"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c}"></span> ${sourceLabel(i)}</span>` : "").join("")}<br>Band: ± typical error. Shaded weeks: before sowing / after harvest. Dashed: selected week.</p>
 `;
