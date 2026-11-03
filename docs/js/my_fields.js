@@ -149,6 +149,9 @@ async function openField(f) {
   const arable = ARABLE.has(s.group), rates = ST.rates[f.id] || ["", "", ""];
   const det = document.getElementById("mf-detail"), cs = cropStyle(s.group, geo.properties.crop), saved = ST.fields.some(x => key(x) === key(f));
   const src = SOURCE_COLOURS.map((c, i) => i ? `<span style="margin-right:10px;white-space:nowrap"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c}"></span> ${sourceLabel(i)}</span>` : "").join("");
+  // week slider with play / pause: on the Overview and the Weekly charts tab, kept in step
+  const weekCtl = `<button type="button" class="play" data-wplay title="Play" aria-label="Play through the weeks">${playIcon(false)}</button>
+        <input type="range" data-week min="0" max="${d.series.weeks.length - 1}" value="${w0}" style="flex:1 1 160px" aria-label="Week"><b data-weeklbl class="note"></b>`;
   det.innerHTML = `
     <div class="mf-head" style="align-items:flex-start">
       <div><div class="crop" style="--c:${cs.colour}"><i></i>${cs.label}</div><h2 class="mf-h" style="margin-top:6px">Field ${f.id}</h2>
@@ -160,8 +163,7 @@ async function openField(f) {
     <div data-pane="overview">
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
         <span class="seg">${[["lai", "Green LAI"], ["ndvi", "NDVI"], ["zones", "Zones"]].map(([k, t]) => `<button data-layer="${k}" class="${k === "lai" ? "on" : ""}">${t}</button>`).join("")}</span>
-        <button type="button" class="play" id="mf-wplay" title="Play" aria-label="Play through the weeks">${playIcon(false)}</button>
-        <input type="range" id="mf-week" min="0" max="${d.series.weeks.length - 1}" value="${w0}" style="flex:1 1 160px" aria-label="Week"><b id="mf-week-lbl" class="note"></b>
+        ${weekCtl}
       </div>
       <canvas id="mf-map" width="360" height="300" style="width:100%;background:var(--bg);border-radius:8px;border:2px solid ${cs.colour}"></canvas>
       <div class="legend" id="mf-legend"></div><div class="note" id="mf-map-cap"></div>
@@ -169,13 +171,14 @@ async function openField(f) {
       <div id="mf-ov-title" class="note" style="margin-top:10px"></div><div id="mf-ov-chart"></div><p class="note">${src}</p>
     </div>
     <div data-pane="charts">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:4px">${weekCtl}</div>
       <h3>Weekly green LAI</h3><div id="mf-lai-chart"></div>
       ${CUR.curve ? `<h3>Season timing</h3><div id="mf-cal-chart"></div>
       <p class="note">Expected crop stages from the regional crop calendar (fitted to DWD stage observations), run on this field's 1 km
       weather cell from the district's typical sowing day (${CUR.curve.sowing}). Not measured on this field. The same stages appear as
       dotted lines on the green LAI chart above.</p>` : ""}
       <h3>Weekly NDVI</h3><div id="mf-ndvi-chart"></div>
-      <p class="note">${src}<br>Band: ± typical error. Shaded weeks: before sowing / after harvest. Dashed: selected week (Overview slider).</p>
+      <p class="note">${src}<br>Band: ± typical error. Shaded weeks: before sowing / after harvest. Dashed: selected week (week slider).</p>
     </div>
     <div data-pane="zones">
     ${arable ? `<h4 class="step">① Check the zones</h4>
@@ -204,21 +207,24 @@ async function openField(f) {
     CUR.layer = b.dataset.layer; det.querySelectorAll("button[data-layer]").forEach(x => x.classList.toggle("on", x === b)); paint();
   });
   // play / pause through the weeks (stops at the last week; from the end it starts again at the first)
-  const wk = document.getElementById("mf-week"), wp = document.getElementById("mf-wplay");
-  const wStop = () => { clearInterval(CUR.wtimer); CUR.wtimer = null; wp.innerHTML = playIcon(false); wp.title = "Play"; };
-  wk.oninput = e => { CUR.week = +e.target.value; paint(); };
-  wk.addEventListener("pointerdown", wStop);
-  wp.onclick = () => {
-    if (CUR.wtimer) return wStop();
-    if (+wk.value >= +wk.max) { wk.value = 0; CUR.week = 0; paint(); }
-    wp.innerHTML = playIcon(true); wp.title = "Pause";
-    const f = CUR;
-    CUR.wtimer = setInterval(() => {
-      const n = nextFrame(+wk.value, +wk.max);
-      if (n == null || CUR !== f || !document.body.contains(wk)) { clearInterval(f.wtimer); f.wtimer = null; if (document.body.contains(wp)) { wp.innerHTML = playIcon(false); wp.title = "Play"; } return; }
-      wk.value = n; CUR.week = n; paint();
+  const sliders = [...det.querySelectorAll("input[data-week]")], players = [...det.querySelectorAll("button[data-wplay]")];
+  const last = +sliders[0].max, cur = CUR;
+  const setIcons = playing => players.forEach(b => { b.innerHTML = playIcon(playing); b.title = playing ? "Pause" : "Play"; });
+  const wStop = () => { clearInterval(cur.wtimer); cur.wtimer = null; if (document.body.contains(det)) setIcons(false); };
+  sliders.forEach(s => {
+    s.oninput = e => { CUR.week = +e.target.value; paint(); };
+    s.addEventListener("pointerdown", wStop);
+  });
+  players.forEach(b => b.onclick = () => {
+    if (cur.wtimer) return wStop();
+    if (CUR.week >= last) { CUR.week = 0; paint(); }
+    setIcons(true);
+    cur.wtimer = setInterval(() => {
+      const n = nextFrame(CUR.week, last);
+      if (n == null || CUR !== cur || !document.body.contains(sliders[0])) return wStop();
+      CUR.week = n; paint();
     }, 600);
-  };
+  });
   paint();
   if (!arable) return;
   ["mf-from", "mf-to"].forEach(i => document.getElementById(i).onchange = () => { paint(); zonePane(); });
@@ -312,7 +318,8 @@ function areaPng(path) {                                  // the area's weekly o
 
 async function paint() {
   const pb = CUR.pb, w = CUR.week, n = pb.e.n, s = CUR.s, wk = CUR.weeks[w];
-  document.getElementById("mf-week-lbl").textContent = `week of ${wk}`;
+  document.querySelectorAll("#mf-detail [data-weeklbl]").forEach(l => { l.textContent = `week of ${wk}`; });
+  document.querySelectorAll("#mf-detail input[data-week]").forEach(s => { s.value = w; });   // both week sliders in step
   const map = document.getElementById("mf-map"), leg = document.getElementById("mf-legend"), cap = document.getElementById("mf-map-cap");
   if (CUR.layer === "zones") {
     const { z } = currentZones();
