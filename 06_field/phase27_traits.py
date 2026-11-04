@@ -28,6 +28,7 @@ AREAS = ["pilot", "selhausen", "north", "south"]
 YEARS = [2021, 2022, 2023, 2024, 2025]
 FV2 = os.path.join("data", "processed", "field_v2")
 UNC = os.path.join(FV2, "uncertainty_traits.json")
+CCC_UNC = os.path.join(FV2, "ccc_unc_fixA.json")
 TRAIT_FILE = "s2_pixels_traits.npz"
 
 
@@ -108,6 +109,74 @@ def gap_errors(days, vals, hide):
             acc[("line", c)][0] += int(sel.sum())
             acc[("line", c)][1] += float(e2[sel].sum())
     return [dict(kind=k, cls=c, n=n, sse=s) for (k, c), (n, s) in acc.items()]
+
+
+def ccc_weekly(ccc_measured, src, lai, lai_src, cab):
+    """Fix A: CCC = the network value on measured weeks; in gap weeks the published weekly LAI (radar in long gaps) x the
+    line-filled Cab (CCC = LAI x Cab by definition), labelled with the LAI source."""
+    m = src == SRC_MEASURED
+    v = np.where(m, ccc_measured, lai * cab).astype(np.float32)
+    s = np.where(m, SRC_MEASURED, lai_src).astype(np.int8)
+    return v, s
+
+
+def hide_unreliable(v, src, gap, lai, min_lai=None, max_gap=30):
+    """No value in gaps longer than max_gap days (line or after the last clear image: no radar model for the traits);
+    with min_lai, also none where the weekly LAI is below it (leaf chlorophyll of near-bare soil is mostly soil)."""
+    bad = (src != SRC_MEASURED) & (gap > max_gap)
+    if min_lai is not None:
+        bad |= ~(lai >= min_lai)
+    return np.where(bad, np.nan, v)
+
+
+def propagated_ccc_unc(lai, u_lai, cab, u_cab):
+    """Error of CCC = LAI x Cab from the two errors (independent): sqrt((Cab u_LAI)^2 + (LAI u_Cab)^2)."""
+    return np.sqrt((cab * u_lai) ** 2 + (lai * u_cab) ** 2)
+
+
+def ccc_errors():
+    """Hidden-date error of the fix-A CCC in gap weeks: the area test's LAI fill of every hidden pixel-date (line if the
+    gap <= 30 d, re-analysis otherwise; same seed-70 dates) x the Cab line from the kept neighbours, against the network
+    CCC of the hidden clear pixel -> ccc_unc_fixA.json (pixel RMSE per gap class)."""
+    from areas import out_dir
+    acc = {c: [0, 0.0, 0.0] for c in ("le15", "16_30", "gt30")}          # n, sse new, sse old line
+    for a in AREAS:
+        for y in YEARS:
+            z = np.load(os.path.join(out_dir(a, y), TRAIT_FILE))
+            dates = pd.DatetimeIndex(z["dates"])
+            days = z["dates"].astype(np.int64)
+            hide = hidden_dates(len(days))
+            cab, ccc = _flagged(a, y, z["cab"]), _flagged(a, y, z["ccc"])
+            e = pd.read_csv(os.path.join(FV2, "area_parts", f"lai_{a}_{y}.csv.gz"), usecols=["pixel", "date", "line", "reanalysis", "gap_s2"])
+            e["date"] = pd.to_datetime(e["date"])
+            if not set(e["date"].unique()) <= set(dates[hide]):
+                raise ValueError(f"{a} {y}: area-test hidden dates differ from the trait hidden dates")
+            kept = np.isfinite(cab) & ~hide[:, None]
+            D = len(days)
+            ar = np.arange(D)[:, None]
+            ff = np.maximum.accumulate(np.where(kept, ar, -1), axis=0)
+            bf = np.minimum.accumulate(np.where(kept, ar, D)[::-1], axis=0)[::-1]
+            for d, g in e.groupby("date"):
+                j = dates.get_loc(d)
+                p = g["pixel"].values
+                pa, pb = ff[j - 1, p], bf[j + 1, p] if j + 1 < D else np.full(len(p), D)
+                ok = (pa >= 0) & (pb < D) & np.isfinite(ccc[j, p])
+                p, pa, pb, gg = p[ok], pa[ok], pb[ok], g[ok]
+                cab_line = cab[pa, p] + (days[j] - days[pa]) / (days[pb] - days[pa]) * (cab[pb, p] - cab[pa, p])
+                ccc_line = ccc[pa, p] + (days[j] - days[pa]) / (days[pb] - days[pa]) * (ccc[pb, p] - ccc[pa, p])
+                gs = gg["gap_s2"].values
+                lai_fill = np.where(gs <= 30, gg["line"].values, gg["reanalysis"].values).clip(0)
+                new, old, truth = lai_fill * cab_line, ccc_line, ccc[j, p]
+                for c, sel in (("le15", gs <= 15), ("16_30", (gs > 15) & (gs <= 30)), ("gt30", gs > 30)):
+                    acc[c][0] += int(sel.sum())
+                    acc[c][1] += float(((new[sel] - truth[sel]) ** 2).sum())
+                    acc[c][2] += float(((old[sel] - truth[sel]) ** 2).sum())
+            print(f"{a} {y} ccc errors done", flush=True)
+    out = {c: round(float(np.sqrt(s / max(n, 1))), 2) for c, (n, s, _) in acc.items()}
+    out["old_line"] = {c: round(float(np.sqrt(o / max(n, 1))), 2) for c, (n, _, o) in acc.items()}
+    out["n"] = {c: n for c, (n, _, _) in acc.items()}
+    json.dump(out, open(CCC_UNC, "w"), indent=1)
+    print(json.dumps(out, indent=1))
 
 
 def hidden_dates(n_dates, seed=HIDE_SEED, share=HIDE_SHARE):
@@ -237,20 +306,41 @@ def _export(area, year):
     F = len(fids)
     days, weeks = z["dates"].astype(np.int64), wk["weeks"].astype("datetime64[D]").astype(np.int64)
     fields = {str(int(f)): {} for f in fids}
+    lai, lai_src, lai_unc = wk["lai"], wk["lai_src"], wk["lai_unc"]      # the published weekly LAI (radar in long gaps)
+    cccu = json.load(open(CCC_UNC))
+    res = {}
     for t in TRAITS:
         v, src, gap = trait_weekly(days, _flagged(area, year, z[t]), weeks)
         u = week_uncertainty(src, gap, _measured_sd(days, z[f"{t}_sd"], weeks, src), unc[t])
+        res[t] = (v, src, gap, u)
+    cab, src, gap, u_cab = res["cab"]
+    # fix A (project log 2026-11-04): CCC in gap weeks = weekly LAI x line-filled Cab, with the LAI source
+    v_ccc, s_ccc = ccc_weekly(res["ccc"][0], res["ccc"][1], lai, lai_src, cab)
+    u_ccc = res["ccc"][3].copy()
+    gw = res["ccc"][1] != SRC_MEASURED
+    ln = gw & (src == SRC_LINE)
+    for cls, sel in (("le15", gap <= 15), ("16_30", (gap > 15) & (gap <= 30)), ("gt30", gap > 30)):
+        u_ccc[ln & sel] = cccu[cls]
+    af = gw & (src == SRC_AFTER)
+    u_ccc[af] = propagated_ccc_unc(lai, lai_unc, cab, u_cab)[af]
+    out_v = {"ccc": (v_ccc, u_ccc, s_ccc),
+             "cab": (hide_unreliable(cab, src, gap, lai, min_lai=0.5), u_cab, src),
+             "cbrown": (hide_unreliable(res["cbrown"][0], src, gap, lai, min_lai=None), res["cbrown"][3], src)}
+    for t, (v, u, s) in out_v.items():
+        u = np.where(np.isfinite(v), u, np.nan)
         fv, fu = field_mean(v, share, inv, F), field_mean(u, share, inv, F)
-        if t == "ccc":                                       # field source: majority by share
-            sw = np.stack([np.stack([np.bincount(inv, weights=share * (src[w] == k), minlength=F) for k in range(5)], 1)
-                           for w in range(len(weeks))])
-            fsrc = sw.argmax(2)
+        tot = np.bincount(inv, weights=share, minlength=F)
+        cover = np.stack([np.bincount(inv, weights=share * np.isfinite(v[w]), minlength=F) for w in range(len(weeks))])
+        thin = cover < 0.5 * np.where(tot > 0, tot, np.inf)[None, :]   # a field value needs half of the field's pixels
+        fv[thin], fu[thin] = np.nan, np.nan
+        sw = np.stack([np.stack([np.bincount(inv, weights=share * (s[w] == k) * np.isfinite(v[w]), minlength=F) for k in range(5)], 1)
+                       for w in range(len(weeks))])
+        fsrc = sw.argmax(2)                                    # field source: majority by share among pixels with a value
         for k, f in enumerate(fids):
             e = fields[str(int(f))]
             e[t] = [None if not np.isfinite(x) else round(float(x), ROUND[t]) for x in fv[:, k]]
             e[f"{t}_unc"] = [None if not np.isfinite(x) else round(float(x), ROUND[t] + 1) for x in fu[:, k]]
-    for k, f in enumerate(fids):
-        fields[str(int(f))]["src"] = fsrc[:, k].tolist()
+            e[f"{t}_src"] = fsrc[:, k].tolist()
     out = os.path.join(DOCS, f"{area}_{year}", "traits.json")
     json.dump({"weeks": [str(w) for w in wk["weeks"]], "fields": fields}, open(out + ".part", "w"), separators=(",", ":"))
     os.replace(out + ".part", out)
@@ -288,6 +378,8 @@ if __name__ == "__main__":
         _pool(retrieve_one, nproc)
     elif cmd == "errors":
         errors()
+    elif cmd == "ccc_errors":
+        ccc_errors()
     elif cmd == "export":
         _pool(export_one, nproc)
         from fv2_platform import write_index

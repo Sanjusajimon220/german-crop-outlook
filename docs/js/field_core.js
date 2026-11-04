@@ -229,12 +229,15 @@ export const TRAITS = [
 
 export function traitsSection({ tr, season, week, weeks }) {
   if (!tr) return "";
-  const kpis = TRAITS.map(t => `<div class="kpi"><div class="k">${t.label}</div><div class="v">${fmtUnc(tr[t.key][week], tr[`${t.key}_unc`][week], t.d)}</div><div class="s">${t.unit}</div></div>`).join("");
-  const charts = TRAITS.map(t => `<h4>${t.label} <span class="note">· ${t.note}</span></h4>${seriesChart({ values: tr[t.key], unc: tr[`${t.key}_unc`], src: tr.src, season, week, weeks, max: t.max, label: t.label })}`).join("");
+  const why = { ccc: "no value this week", cab: "not estimated: gap over 30 days or green LAI below 0.5", cbrown: "not estimated: gap over 30 days" };
+  const kpis = TRAITS.map(t => { const v = tr[t.key][week];
+    return `<div class="kpi"><div class="k">${t.label}</div><div class="v">${v == null ? "–" : fmtUnc(v, tr[`${t.key}_unc`][week], t.d)}</div><div class="s">${v == null ? why[t.key] : t.unit}</div></div>`; }).join("");
+  const charts = TRAITS.map(t => `<h4>${t.label} <span class="note">· ${t.note}</span></h4>${seriesChart({ values: tr[t.key], unc: tr[`${t.key}_unc`], src: tr[`${t.key}_src`] || tr.src, season, week, weeks, max: t.max, label: t.label })}`).join("");
   return `<h3>Chlorophyll and ripening</h3><div class="kpis">${kpis}</div>${charts}
-    <p class="note">From the same Sentinel-2 images and network as green LAI. Cloudy weeks: straight line between clear images
-    (no radar model for these). Leaf chlorophyll is the least certain of the four outputs; canopy chlorophyll saturates in dense
-    canopies like LAI. A satellite estimate, not measured plant nitrogen.</p>`;
+    <p class="note">From the same Sentinel-2 images and network as green LAI. Cloudy weeks: canopy chlorophyll = the weekly green LAI
+    (radar-filled in long gaps) × leaf chlorophyll; leaf chlorophyll and brown pigment by a straight line between clear images,
+    with no value in gaps over 30 days (no radar model for them). Leaf chlorophyll is not shown where green LAI is below 0.5
+    (mostly soil signal). Canopy chlorophyll saturates in dense canopies like LAI. A satellite estimate, not measured plant nitrogen.</p>`;
 }
 
 // time sliders (forecast dates, field weeks, study-area frames): one round play / pause button everywhere

@@ -1,6 +1,7 @@
 import numpy as np
 
-from phase27_traits import SRC_AFTER, SRC_LINE, SRC_MEASURED, gap_errors, trait_weekly, week_uncertainty
+from phase27_traits import (SRC_AFTER, SRC_LINE, SRC_MEASURED, ccc_weekly, gap_errors, hide_unreliable, propagated_ccc_unc,
+                           trait_weekly, week_uncertainty)
 
 
 def test_trait_weekly_sources_and_gaps():
@@ -32,3 +33,29 @@ def test_gap_errors_line_and_held_value():
     assert by[("line", "le15")]["n"] == 0 and by[("line", "16_30")]["n"] == 1
     assert abs(by[("line", "16_30")]["sse"] - (10.0 - 5.0) ** 2) < 1e-9        # line 0 -> 20 gives 10 at day 10
     assert by[("after", "le30")]["n"] == 1 and abs(by[("after", "le30")]["sse"] - 25.0) < 1e-9   # held 0 vs 5
+
+
+def test_ccc_weekly_measured_or_lai_times_cab_with_the_lai_source():
+    ccc_meas = np.array([[50.0, 99.0, 99.0, 99.0]])
+    src = np.array([[SRC_MEASURED, SRC_LINE, SRC_LINE, SRC_AFTER]])
+    lai = np.array([[1.5, 0.3, 2.0, 1.0]]); lai_src = np.array([[1, 3, 2, 4]], np.int8)
+    cab = np.array([[33.0, 35.0, 40.0, 30.0]])
+    v, s = ccc_weekly(ccc_meas, src, lai, lai_src, cab)
+    assert v.tolist() == [[50.0, 10.5, 80.0, 30.0]]          # measured kept; gaps follow the (radar) LAI
+    assert s.tolist() == [[1, 3, 2, 4]]                      # gap weeks carry the LAI source
+
+
+def test_hide_unreliable_long_gaps_and_cab_on_bare_soil():
+    v = np.array([[30.0, 31.0, 32.0, 33.0, 34.0]])
+    src = np.array([[SRC_MEASURED, SRC_LINE, SRC_LINE, SRC_AFTER, SRC_AFTER]])
+    gap = np.array([[0, 20, 45, 10, 40]])
+    lai = np.array([[0.4, 2.0, 2.0, 2.0, 2.0]])
+    cab = hide_unreliable(v, src, gap, lai, min_lai=0.5)
+    assert np.isnan(cab[0, [0, 2, 4]]).all() and cab[0, [1, 3]].tolist() == [31.0, 33.0]
+    cbrown = hide_unreliable(v, src, gap, lai, min_lai=None)                # no bare-soil rule
+    assert np.isnan(cbrown[0, [2, 4]]).all() and cbrown[0, 0] == 30.0
+
+
+def test_propagated_ccc_unc():
+    u = propagated_ccc_unc(lai=np.array([2.0]), u_lai=np.array([0.5]), cab=np.array([40.0]), u_cab=np.array([8.0]))
+    assert abs(u[0] - np.hypot(40 * 0.5, 2.0 * 8.0)) < 1e-9
