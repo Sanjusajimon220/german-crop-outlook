@@ -1,7 +1,7 @@
 // Field level in the EXPLORER: zoom from districts to the NRW study areas, fields and 10 m pixels.
 // Uses the globals of the district app (S, META, GEO, d3, css, fmt, rowFor, cropData, drawMap, drawPanel, doyDate, LEADS).
 import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, clearRgbDate, fmtUnc, affineFromCorners, leavesField,
-         fieldUrl, noDataReason, zoomAllowed, areaToEnter, fieldRgbDate, areaRgbDate, legendSpec, groupMedian, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary, stageMarks, calendarChart, traitsSection } from "./field_core.js";
+         fieldUrl, noDataReason, zoomAllowed, areaToEnter, fieldRgbDate, areaRgbDate, legendSpec, groupMedian, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary, stageMarks, calendarChart, traitsSection, calendarNote } from "./field_core.js";
 
 const BASE = "field/";
 const ENTER_K = 40;                                   // zoom factor at which an area switches to fields
@@ -255,10 +255,8 @@ export async function fieldPanel(id) {
     </div>
     <p><span class="pill">${sourceLabel(s.src[w])}</span> ${s.alert[w] === 1 ? '<span class="pill bad">below the median field for 2 weeks</span>' : s.alert[w] === 2 ? '<span class="pill bad">falling while the median rises</span>' : ""}</p>
     <h3>Weekly green LAI</h3>${seriesChart({ values: s.lai, unc: s.lai_unc, src: s.src, season: s.season, week: w, weeks: FV.series.weeks, max: 6, label: "green LAI", marks })}
-    ${curve ? `<h3>Season timing</h3>${calendarChart({ curve, stages, weeks: FV.series.weeks, week: w })}
-    <p class="note">Expected crop stages from the regional crop calendar (fitted to DWD stage observations), run on this field's 1 km
-    weather cell from the district's typical sowing day (${curve.sowing}). Not measured on this field. The same stages appear as
-    dotted lines on the green LAI chart above. ${marks.map(m => `${m.label} ${m.date.slice(5)}`).join(" · ")}</p>` : ""}
+    ${curve ? `<h3>Season timing</h3>${calendarChart({ curve, stages, weeks: FV.series.weeks, week: w })}` : ""}
+    ${calendarNote(curve, marks, s.group)}
     <h3>Weekly NDVI</h3>${seriesChart({ values: s.ndvi, unc: s.ndvi_unc, src: s.ndvi_src, season: s.season, week: w, weeks: FV.series.weeks, max: 1, label: "NDVI" })}
     ${traitsSection({ tr: (await loadTraits(FV.area, FV.year))?.fields[String(id)] || null, season: s.season, week: w, weeks: FV.series.weeks })}
     <p class="note">${SOURCE_COLOURS.map((c, i) => i ? `<span style="margin-right:10px;white-space:nowrap"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c}"></span> ${sourceLabel(i)}</span>` : "").join("")}<br>Band: ± typical error. Shaded weeks: before sowing / after harvest. Dashed: selected week.</p>

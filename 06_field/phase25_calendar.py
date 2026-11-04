@@ -3,7 +3,7 @@
 The frozen district crop calendar (phenology_model_<crop>.json, as in the district model) run on each field's own HYRAS
 1 km weather cell (tmin / tmax / rain), the district's sowing day and day length - the same development curve the field
 model (phase23) uses. Fields of one crop, district and cell share one curve. Winter wheat, winter barley, silage and
-grain maize, potato (every crop with a fitted calendar); other crops have none.
+grain maize: maize and potato removed, see CALENDARS; other crops have none.
 Not a field measurement: Job 6a found no field-level gain in stage dates, so the platform labels it as the regional
 calendar. Writes docs/field/<area>_<year>/calendar.json:
   weeks           the series.json Mondays
@@ -27,9 +27,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 DOCS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs", "field")
 FD = os.path.join("data", "processed", "field")
 # fitted district calendar per field crop: NRW register crop name prefix -> (platform key, district model crop)
-CALENDARS = [("Winterweichweizen", "wheat", "winter_wheat"), ("Wintergerste", "barley", "winter_barley"),
-             ("Silomais", "silage_maize", "silage_maize"), ("Mais (ohne", "grain_maize", "grain_maize"),
-             ("Kartoffeln", "potato", "potato")]
+CALENDARS = [("Winterweichweizen", "wheat", "winter_wheat"), ("Wintergerste", "barley", "winter_barley")]
+# maize and potato removed (owner decision 2026-11-04): against the satellite canopy of the study-area fields their DWD-fitted
+# calendars ran early (potato canopy closed 2-5 weeks before median LAI >= 2; maize flowering 1-3 weeks before the LAI peak);
+# wheat / barley agreed (LAI peak +4 / +14 days after heading). The maize / potato loaders stay for a later satellite-shifted test:
+# add ("Silomais", "silage_maize", "silage_maize"), ("Mais (ohne", "grain_maize", "grain_maize"), ("Kartoffeln", "potato", "potato")
 MODEL_KEY = {k: m for _, k, m in CALENDARS}
 # grain maize district rows end in 2021 (no Destatis district yields after): its fitted calendar runs on the silage maize
 # row of the same district-year (same crop, same sowing day)

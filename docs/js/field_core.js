@@ -253,6 +253,21 @@ export const STAGE_LABELS = { emergence: "emergence", stem_extension: "stem exte
   tassel: "tasselling", flowering: "flowering", dough_ripe: "dough ripe", canopy_closed: "canopy closed" };
 const STAGE_COLOUR = "#eb6834";
 
+// label under "Season timing": what the calendar is, and how it compared with the satellite (project log 2026-11-04:
+// median green-LAI peak minus calendar heading over 20 area-seasons); other arable crops: why there is none
+const CAL_CROPS = { wheat: ["winter wheat", "+4 days (range −6 to +18)"], barley: ["winter barley", "+14 days (range −14 to +23)"] };
+const NO_CAL = new Set(["maize", "potato", "sugar beet", "rapeseed", "other cereal"]);
+export function calendarNote(curve, marks, group) {
+  if (!curve) return NO_CAL.has(group) ? `<p class="note">No crop calendar for this crop: the regional calendar is shown only for winter wheat and winter barley.
+    For maize and potato the fitted calendar ran 1–5 weeks ahead of the satellite canopy of these fields, so it is not shown.</p>` : "";
+  const [name, check] = CAL_CROPS[curve.crop] || [curve.crop, null];
+  return `<p class="note"><b>Regional crop calendar, ${name}.</b> Expected stages from the crop calendar fitted to DWD stage observations,
+    run on this field's 1 km weather from the district's typical sowing day (${curve.sowing}). Not measured on this field: a field sown
+    earlier or later is ahead or behind by about that much.${check ? ` Checked against the satellite: the median green-LAI peak of ${name}
+    fields came ${check} after the expected heading.` : ""} Dotted lines on the green LAI chart mark the same stages.
+    ${marks.map(m => `${m.label} ${m.date.slice(5)}`).join(" · ")}</p>`;
+}
+
 // stage date -> fractional week index (days after the first Monday / 7); stages not reached in the run are left out
 export function stageMarks(dates, stages, weeks) {
   const t0 = Date.parse(weeks[0]);
@@ -262,7 +277,7 @@ export function stageMarks(dates, stages, weeks) {
 // development curve of the regional crop calendar on the same week axis as seriesChart: dashed stage thresholds with
 // their names, a dot where the curve reaches each one, the selected week dashed
 export function calendarChart({ curve, stages, weeks, week }) {
-  if (!curve || !curve.dev.some(v => v != null)) return `<p class="note">No crop calendar for this field (fitted for winter wheat, winter barley, maize and potato only).</p>`;
+  if (!curve || !curve.dev.some(v => v != null)) return `<p class="note">No crop calendar for this field (fitted for winter wheat, winter barley and maize only).</p>`;
   // the scale ends a little above the last stage (development keeps rising after ripeness and would squeeze the stages)
   const n = weeks.length, top = Math.ceil((Math.max(...curve.thr) * 1.15) / 20) * 20;
   const W = 460, H = 160, L = 34, R = 10, T = 10, B = 24, f = v => +v.toFixed(1);

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc , leavesField, clearRgbDate, fieldUrl, noDataReason, zoomAllowed, areaToEnter, groupMedian, exportCheck, fieldRgbDate, areaRgbDate, legendSpec, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS, CLASS_STYLES, classLegend, classByCrop, stageMarks, calendarChart, playIcon, nextFrame, TRAITS, traitsSection, STAGE_LABELS } from "../../docs/js/field_core.js";
+import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc , leavesField, clearRgbDate, fieldUrl, noDataReason, zoomAllowed, areaToEnter, groupMedian, exportCheck, fieldRgbDate, areaRgbDate, legendSpec, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS, CLASS_STYLES, classLegend, classByCrop, stageMarks, calendarChart, playIcon, nextFrame, TRAITS, traitsSection, STAGE_LABELS, calendarNote } from "../../docs/js/field_core.js";
 
 test("play / pause icon and the next frame of a time slider (stops at the end unless it loops)", () => {
   assert.match(playIcon(false), /<path d="M4 2.5v11l9-5.5z"/);
@@ -318,5 +318,14 @@ test("calendar stage labels of close thresholds do not overlap", () => {
   const ys = [...svg.matchAll(/<text x="[\d.]+" y="([\d.]+)" text-anchor="end">(?:emergence|tasselling|flowering|milk ripe|dough ripe)</g)].map(m => +m[1]).sort((a, b) => a - b);
   assert.equal(ys.length, 5);
   for (let k = 1; k < ys.length; k++) assert.ok(ys[k] - ys[k - 1] >= 10, `labels ${ys[k - 1]} and ${ys[k]} overlap`);
-  assert.match(calendarChart({ curve: null, stages: [], weeks, week: 0 }), /maize and potato/);
+  assert.match(calendarChart({ curve: null, stages: [], weeks, week: 0 }), /winter barley and maize only/);
+});
+
+test("season timing label: crop named, regional and checked; other crops say why there is none", () => {
+  const wheat = calendarNote({ crop: "wheat", sowing: "2021-10-12" }, [{ label: "heading", date: "2022-05-19" }]);
+  assert.match(wheat, /winter wheat/); assert.match(wheat, /2021-10-12/); assert.match(wheat, /heading 05-19/);
+  assert.match(wheat, /not measured on this field/i); assert.match(wheat, /\+4 days/);
+  assert.match(calendarNote({ crop: "barley", sowing: "2021-09-25" }, []), /winter barley.*\+14 days/s);
+  assert.match(calendarNote(null, [], "maize"), /only for winter wheat and winter barley/);
+  assert.equal(calendarNote(null, [], "grass"), "");                          // non-arable: nothing
 });

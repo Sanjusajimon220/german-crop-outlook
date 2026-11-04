@@ -1,7 +1,7 @@
 // MY FIELDS: fields picked on the map (kept in this browser, no accounts), list + map, zones, rates, exports.
 import { loadMyFields, saveMyFields, zones, fmtUnc, sourceLabel, withinNoise, nearestRgbDate, clearRgbDate,
          affineFromCorners, invertAffine, applyAffine, groupMedian, exportCheck, noDataReason, fieldRgbDate,
-         seriesChart, SOURCE_COLOURS, legendSpec, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS, CLASS_STYLES, classLegend, classByCrop, stageMarks, calendarChart, playIcon, nextFrame, traitsSection } from "./field_core.js";
+         seriesChart, SOURCE_COLOURS, legendSpec, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS, CLASS_STYLES, classLegend, classByCrop, stageMarks, calendarChart, playIcon, nextFrame, traitsSection, calendarNote } from "./field_core.js";
 const badge = (g, c) => { const k = cropStyle(g, c); return `<span class="crop" style="--c:${k.colour}"><i></i>${k.label}</span>`; };
 
 import { buildTaskData } from "./isoxml.js";
@@ -175,10 +175,8 @@ async function openField(f) {
     <div data-pane="charts">
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:4px">${weekCtl}</div>
       <h3>Weekly green LAI</h3><div id="mf-lai-chart"></div>
-      ${CUR.curve ? `<h3>Season timing</h3><div id="mf-cal-chart"></div>
-      <p class="note">Expected crop stages from the regional crop calendar (fitted to DWD stage observations), run on this field's 1 km
-      weather cell from the district's typical sowing day (${CUR.curve.sowing}). Not measured on this field. The same stages appear as
-      dotted lines on the green LAI chart above.</p>` : ""}
+      ${CUR.curve ? `<h3>Season timing</h3><div id="mf-cal-chart"></div>` : ""}
+      ${calendarNote(CUR.curve, CUR.curve ? stageMarks(CUR.curve.dates, CUR.stages, CUR.weeks) : [], s.group)}
       <h3>Weekly NDVI</h3><div id="mf-ndvi-chart"></div>
       <div id="mf-traits"></div>
       <p class="note">${src}<br>Band: ± typical error. Shaded weeks: before sowing / after harvest. Dashed: selected week (week slider).</p>

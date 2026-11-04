@@ -20,13 +20,9 @@ def test_weekly_dev_samples_mondays_and_leaves_gaps_outside_the_run():
 def test_calendar_crop_maps_register_names_to_fitted_calendars():
     assert calendar_crop("Winterweichweizen") == "wheat"
     assert calendar_crop("Wintergerste") == "barley"
-    assert calendar_crop("Silomais") == "silage_maize"
-    assert calendar_crop("Silomais (als Hauptfutter)") == "silage_maize"
-    assert calendar_crop("Mais (ohne Silomais)") == "grain_maize"          # contains 'Silomais' but is grain maize
-    assert calendar_crop("Mais (ohne Zucker-/Silomais)") == "grain_maize"
-    assert calendar_crop("Kartoffeln") == "potato"
-    for other in ("Mais-Mischkulturen", "Sommergerste", "Winter-Dinkel", "Zuckerrüben", "Winterraps", None):
-        assert calendar_crop(other) is None                                 # no fitted calendar
+    for other in ("Silomais", "Mais (ohne Silomais)", "Kartoffeln", "Mais-Mischkulturen", "Sommergerste", "Winter-Dinkel",
+                  "Zuckerrüben", "Winterraps", None):
+        assert calendar_crop(other) is None                                 # no calendar shown (maize / potato removed)
 
 
 def test_nearest_assign_takes_cell_and_district_of_the_nearest_reference_field_within_reach():
