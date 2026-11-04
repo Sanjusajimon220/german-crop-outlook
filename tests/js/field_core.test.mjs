@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc , leavesField, clearRgbDate, fieldUrl, noDataReason, zoomAllowed, areaToEnter, groupMedian, exportCheck, fieldRgbDate, areaRgbDate, legendSpec, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS, CLASS_STYLES, classLegend, classByCrop, stageMarks, calendarChart, playIcon, nextFrame, TRAITS, traitsSection } from "../../docs/js/field_core.js";
+import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc , leavesField, clearRgbDate, fieldUrl, noDataReason, zoomAllowed, areaToEnter, groupMedian, exportCheck, fieldRgbDate, areaRgbDate, legendSpec, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS, CLASS_STYLES, classLegend, classByCrop, stageMarks, calendarChart, playIcon, nextFrame, TRAITS, traitsSection, STAGE_LABELS } from "../../docs/js/field_core.js";
 
 test("play / pause icon and the next frame of a time slider (stops at the end unless it loops)", () => {
   assert.match(playIcon(false), /<path d="M4 2.5v11l9-5.5z"/);
@@ -304,4 +304,19 @@ test("trait section: three weekly charts with values, typical errors and the not
   assert.match(html, /0\.20 ± 0\.13/);
   assert.match(html, /not measured plant nitrogen/i);
   assert.equal(traitsSection({ tr: null, season: [], week: 0, weeks }), "");     // no traits file: nothing shown
+});
+
+test("stage labels for maize and potato calendars", () => {
+  for (const [k, v] of [["tassel", "tasselling"], ["flowering", "flowering"], ["dough_ripe", "dough ripe"], ["canopy_closed", "canopy closed"]])
+    assert.equal(STAGE_LABELS[k], v);
+});
+
+test("calendar stage labels of close thresholds do not overlap", () => {
+  const weeks = ["2022-04-04", "2022-04-11", "2022-04-18", "2022-04-25"];
+  const curve = { dev: [0, 10, 50, 90], thr: [10, 70, 74, 80, 83], dates: {} };
+  const svg = calendarChart({ curve, stages: ["emergence", "tassel", "flowering", "milk_ripe", "dough_ripe"], weeks, week: 1 });
+  const ys = [...svg.matchAll(/<text x="[\d.]+" y="([\d.]+)" text-anchor="end">(?:emergence|tasselling|flowering|milk ripe|dough ripe)</g)].map(m => +m[1]).sort((a, b) => a - b);
+  assert.equal(ys.length, 5);
+  for (let k = 1; k < ys.length; k++) assert.ok(ys[k] - ys[k - 1] >= 10, `labels ${ys[k - 1]} and ${ys[k]} overlap`);
+  assert.match(calendarChart({ curve: null, stages: [], weeks, week: 0 }), /maize and potato/);
 });

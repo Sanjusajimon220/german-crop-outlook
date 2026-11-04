@@ -2,7 +2,8 @@
 
 The frozen district crop calendar (phenology_model_<crop>.json, as in the district model) run on each field's own HYRAS
 1 km weather cell (tmin / tmax / rain), the district's sowing day and day length - the same development curve the field
-model (phase23) uses. Fields of one crop, district and cell share one curve. Winter wheat and winter barley only.
+model (phase23) uses. Fields of one crop, district and cell share one curve. Winter wheat, winter barley, silage and
+grain maize, potato (every crop with a fitted calendar); other crops have none.
 Not a field measurement: Job 6a found no field-level gain in stage dates, so the platform labels it as the regional
 calendar. Writes docs/field/<area>_<year>/calendar.json:
   weeks           the series.json Mondays
@@ -25,7 +26,51 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 
 DOCS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs", "field")
 FD = os.path.join("data", "processed", "field")
-CODES = {"wheat": "Winterweichweizen", "barley": "Wintergerste"}      # NRW register crop names (as phase22b)
+# fitted district calendar per field crop: NRW register crop name prefix -> (platform key, district model crop)
+CALENDARS = [("Winterweichweizen", "wheat", "winter_wheat"), ("Wintergerste", "barley", "winter_barley"),
+             ("Silomais", "silage_maize", "silage_maize"), ("Mais (ohne", "grain_maize", "grain_maize"),
+             ("Kartoffeln", "potato", "potato")]
+MODEL_KEY = {k: m for _, k, m in CALENDARS}
+
+
+def calendar_crop(name):
+    """Platform calendar key for an NRW register crop name, None without a fitted calendar (prefix match:
+    'Mais (ohne Silomais)' is grain maize although it contains 'Silomais')."""
+    if not isinstance(name, str):
+        return None
+    for prefix, key, _ in CALENDARS:
+        if name.startswith(prefix):
+            return key
+    return None
+
+
+def nearest_assign(xy, ref_xy, ref_cells, ref_dists, max_m=1500):
+    """Weather cell and district of the nearest reference field (the wheat / barley fields of fields_hyras_cell.csv)
+    for fields outside those tables; -1 / None when no reference field lies within max_m."""
+    from scipy.spatial import cKDTree
+    dist, k = cKDTree(ref_xy).query(xy)
+    ok = dist <= max_m
+    cells = np.where(ok, np.asarray(ref_cells)[k], -1)
+    dists = np.array([d if o else None for d, o in zip(np.asarray(ref_dists, dtype=object)[k], ok)], dtype=object)
+    return cells, dists
+
+
+_L = {}
+
+
+def _load(crop):
+    """District rows, inputs and the fitted calendar of one crop (as phase23_ours_field._load, calendar part only)."""
+    if crop not in _L:
+        from phase2_growth import load_growth
+        from phase2_phenology import CROPS, Calendar
+        key = MODEL_KEY[crop]
+        m, d = load_growth(key)
+        stages, gate, vp, _ = CROPS[key]
+        cal = Calendar(len(stages), stages.index(gate), vp,
+                       json.load(open(os.path.join("data", "processed", f"phenology_model_{key}.json"))))
+        _L[crop] = dict(m=m, d=d, cal=cal, stages=stages,
+                        row={(r.district, int(r.year)): i for i, r in m[["district", "year"]].iterrows()})
+    return _L[crop]
 
 
 def stage_dates(dev, thresholds, sowing, names):
@@ -46,7 +91,7 @@ def weekly_dev(dev, sowing, weeks):
 def calendar_curve(crop, year, district, cell):
     """Daily development from sowing on the cell's weather (phase23 field_ensemble without the growth run)."""
     import phase23_ours_field as OF
-    L = OF._load(crop)
+    L = _load(crop)
     m, d = L["m"], L["d"]
     i = L["row"].get((district, year))
     if i is None:
@@ -71,18 +116,35 @@ def calendar_curve(crop, year, district, cell):
 
 def build(area, year):
     from phase2_phenology import CROPS
-    import phase23_ours_field as OF
     out_dir = os.path.join(DOCS, f"{area}_{year}")
     weeks = np.array(json.load(open(os.path.join(out_dir, "series.json")))["weeks"], dtype="datetime64[D]")
     fl = pd.read_csv(os.path.join("data", "processed", "field_v2", f"{area}_{year}", "fields_nrw.csv"))
     cell = pd.read_csv(os.path.join(FD, "fields_hyras_cell.csv"))
     cell = cell[cell.VALIDFROM == year].set_index("ID")["cell"]
     dist = pd.read_csv(os.path.join(FD, "fields_district.csv"), dtype={"district": str})
-    dist = dist[dist.VALIDFROM == year].drop_duplicates("ID").set_index("ID")["district"]
+    dref = pd.read_csv(os.path.join(FD, "fields_district.csv"), dtype={"district": str})
+    dref = dref[dref.VALIDFROM == year].drop_duplicates("ID").set_index("ID")
+    dist = dref["district"]
     out = dict(weeks=[str(w) for w in weeks], stages={}, curves={}, fields={})
-    for crop, name in CODES.items():
-        out["stages"][crop] = CROPS[OF.CROP_KEYS[crop]][0]
-        for fid in fl[fl.crop.str.contains(name, na=False)].field_id:
+    fl = fl.assign(cal=fl["crop"].map(calendar_crop))
+    # maize / potato fields are not in the two tables (built for wheat / barley): cell and district of the nearest
+    # wheat / barley field within 1.5 km (centroids, UTM 32N)
+    miss = fl[fl["cal"].notna() & ~fl["field_id"].isin(cell.index)]["field_id"].values
+    if len(miss):
+        import geopandas as gpd
+        from areas import bounds
+        g = gpd.read_file(os.path.join("data", "processed", "fields_rur_allcrops.gpkg"), bbox=bounds(area))
+        g = g[(g["VALIDFROM"] == year) & g["ID"].isin(miss)].drop_duplicates("ID").set_index("ID")
+        ref = dref[dref.index.isin(cell.index)]
+        cen = g.geometry.centroid
+        c2, d2 = nearest_assign(np.column_stack([cen.x, cen.y]), ref[["x", "y"]].values, cell[ref.index].values,
+                                ref["district"].values)
+        ok = c2 >= 0
+        cell = pd.concat([cell, pd.Series(c2[ok], index=g.index[ok])])
+        dist = pd.concat([dist, pd.Series(d2[ok], index=g.index[ok])])
+    for crop in [k for _, k, _ in CALENDARS]:
+        out["stages"][crop] = CROPS[MODEL_KEY[crop]][0]
+        for fid in fl[fl["cal"] == crop].field_id:
             if fid not in cell.index or fid not in dist.index:
                 continue
             key = f"{crop}_{dist[fid]}_{int(cell[fid])}"

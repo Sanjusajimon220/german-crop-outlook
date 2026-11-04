@@ -249,7 +249,8 @@ export function nextFrame(value, max, loop = false) {
 }
 
 // crop calendar (phase25_calendar.py, calendar.json): stage names and where each stage falls on the weekly axis
-export const STAGE_LABELS = { emergence: "emergence", stem_extension: "stem extension", heading: "heading", milk_ripe: "milk ripe", yellow_ripe: "yellow ripe" };
+export const STAGE_LABELS = { emergence: "emergence", stem_extension: "stem extension", heading: "heading", milk_ripe: "milk ripe", yellow_ripe: "yellow ripe",
+  tassel: "tasselling", flowering: "flowering", dough_ripe: "dough ripe", canopy_closed: "canopy closed" };
 const STAGE_COLOUR = "#eb6834";
 
 // stage date -> fractional week index (days after the first Monday / 7); stages not reached in the run are left out
@@ -261,15 +262,18 @@ export function stageMarks(dates, stages, weeks) {
 // development curve of the regional crop calendar on the same week axis as seriesChart: dashed stage thresholds with
 // their names, a dot where the curve reaches each one, the selected week dashed
 export function calendarChart({ curve, stages, weeks, week }) {
-  if (!curve || !curve.dev.some(v => v != null)) return `<p class="note">No crop calendar for this field (winter wheat and winter barley only).</p>`;
+  if (!curve || !curve.dev.some(v => v != null)) return `<p class="note">No crop calendar for this field (fitted for winter wheat, winter barley, maize and potato only).</p>`;
   // the scale ends a little above the last stage (development keeps rising after ripeness and would squeeze the stages)
   const n = weeks.length, top = Math.ceil((Math.max(...curve.thr) * 1.15) / 20) * 20;
   const W = 460, H = 160, L = 34, R = 10, T = 10, B = 24, f = v => +v.toFixed(1);
   const x = i => f(L + (n > 1 ? (i * (W - L - R)) / (n - 1) : 0)), y = v => f(H - B - (Math.max(0, Math.min(top, v)) / top) * (H - B - T));
   const pts = curve.dev.map((v, i) => (v == null || v > top ? null : `${x(i)},${y(v)}`)).filter(Boolean);
   const marks = stageMarks(curve.dates, stages, weeks);
+  // labels just above their threshold line, pushed down so close stages (maize: tassel to dough ripe) keep 10 px apart
+  const ly = stages.map((_, k) => y(curve.thr[k]) - 3), order = ly.map((_, k) => k).sort((a, b) => ly[a] - ly[b]);
+  order.forEach((k, j) => { ly[k] = f(Math.max(ly[k], j ? ly[order[j - 1]] + 10 : T + 8)); });
   const thr = stages.map((s, k) => `<line x1="${L}" x2="${W - R}" y1="${y(curve.thr[k])}" y2="${y(curve.thr[k])}" stroke="#8b96b4" stroke-opacity=".7" stroke-dasharray="4 3"/>
-    <text x="${W - R - 2}" y="${y(curve.thr[k]) - 3}" text-anchor="end">${STAGE_LABELS[s] || s}</text>`).join("");
+    <text x="${W - R - 2}" y="${ly[k]}" text-anchor="end">${STAGE_LABELS[s] || s}</text>`).join("");
   const dots = marks.map(m => `<circle cx="${x(m.i)}" cy="${y(curve.thr[stages.indexOf(m.stage)])}" r="3.5" fill="${STAGE_COLOUR}"><title>expected ${m.label}: ${m.date}</title></circle>`).join("");
   const ticks = [0, top / 2, top].map(t => `<text x="${L - 5}" y="${y(t) + 4}" text-anchor="end">${t}</text>`).join("");
   const months = weeks.map((w, i) => [w, i]).filter(([w]) => +w.slice(8, 10) <= 7 && ["11", "01", "03", "05", "07"].includes(w.slice(5, 7)))
