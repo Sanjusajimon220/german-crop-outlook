@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc , leavesField, clearRgbDate, fieldUrl, noDataReason, zoomAllowed, areaToEnter, groupMedian, exportCheck, fieldRgbDate, areaRgbDate, legendSpec, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS, CLASS_STYLES, classLegend, classByCrop, stageMarks, calendarChart, playIcon, nextFrame } from "../../docs/js/field_core.js";
+import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc , leavesField, clearRgbDate, fieldUrl, noDataReason, zoomAllowed, areaToEnter, groupMedian, exportCheck, fieldRgbDate, areaRgbDate, legendSpec, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS, CLASS_STYLES, classLegend, classByCrop, stageMarks, calendarChart, playIcon, nextFrame, TRAITS, traitsSection } from "../../docs/js/field_core.js";
 
 test("play / pause icon and the next frame of a time slider (stops at the end unless it loops)", () => {
   assert.match(playIcon(false), /<path d="M4 2.5v11l9-5.5z"/);
@@ -290,4 +290,18 @@ test("classByCrop: field counts per crop and class, largest crop first; classLeg
   assert.equal(t[1].crop, "Sugar beet"); assert.equal(t[1].counts["variable, reliable zones"], 1);
   const L = classLegend(cls, props, "var", "Sugar beet");
   assert.deepEqual(L.map(r => r.n), [0, 1, 0, 0]);
+});
+
+test("trait section: three weekly charts with values, typical errors and the note on reliability", () => {
+  const weeks = ["2022-03-07", "2022-03-14", "2022-03-21"];
+  const tr = { ccc: [100, 150, null], ccc_unc: [20, 26, null], cab: [40, 45, null], cab_unc: [5, 6, null],
+               cbrown: [0.1, 0.2, null], cbrown_unc: [0.1, 0.13, null], src: [1, 2, 0] };
+  const html = traitsSection({ tr, season: [1, 1, 1], week: 1, weeks });
+  assert.deepEqual(TRAITS.map(t => t.key), ["ccc", "cab", "cbrown"]);
+  assert.equal((html.match(/<svg class="chart"/g) || []).length, 3);
+  assert.match(html, /150 ± 26/);                                    // CCC this week, rounded as the trait says
+  assert.match(html, /45\.0 ± 6\.0/);
+  assert.match(html, /0\.20 ± 0\.13/);
+  assert.match(html, /not measured plant nitrogen/i);
+  assert.equal(traitsSection({ tr: null, season: [], week: 0, weeks }), "");     // no traits file: nothing shown
 });

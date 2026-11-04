@@ -218,6 +218,25 @@ export function seriesChart({ values, unc, src, season, week, weeks, max, label,
     <line x1="${x(week)}" x2="${x(week)}" y1="${T}" y2="${H - B}" stroke="#8b96b4" stroke-dasharray="3 3"/></svg>`;
 }
 
+// the other three outputs of the PROSAIL network (traits.json): weekly field values, measured or straight line between
+// clear images (no radar model for these), each with its typical error
+export const TRAITS = [
+  { key: "ccc", label: "Canopy chlorophyll (CCC)", unit: "µg/cm² × LAI", d: 0, max: 300,
+    note: "leaf chlorophyll × green LAI; closely linked to canopy nitrogen" },
+  { key: "cab", label: "Leaf chlorophyll (Cab)", unit: "µg/cm²", d: 1, max: 80, note: "how green each leaf is" },
+  { key: "cbrown", label: "Brown pigment (Cbrown)", unit: "0-1.5", d: 2, max: 1, note: "rises when the leaves age and ripen" },
+];
+
+export function traitsSection({ tr, season, week, weeks }) {
+  if (!tr) return "";
+  const kpis = TRAITS.map(t => `<div class="kpi"><div class="k">${t.label}</div><div class="v">${fmtUnc(tr[t.key][week], tr[`${t.key}_unc`][week], t.d)}</div><div class="s">${t.unit}</div></div>`).join("");
+  const charts = TRAITS.map(t => `<h4>${t.label} <span class="note">· ${t.note}</span></h4>${seriesChart({ values: tr[t.key], unc: tr[`${t.key}_unc`], src: tr.src, season, week, weeks, max: t.max, label: t.label })}`).join("");
+  return `<h3>Chlorophyll and ripening</h3><div class="kpis">${kpis}</div>${charts}
+    <p class="note">From the same Sentinel-2 images and network as green LAI. Cloudy weeks: straight line between clear images
+    (no radar model for these). Leaf chlorophyll is the least certain of the four outputs; canopy chlorophyll saturates in dense
+    canopies like LAI. A satellite estimate, not measured plant nitrogen.</p>`;
+}
+
 // time sliders (forecast dates, field weeks, study-area frames): one round play / pause button everywhere
 export function playIcon(playing) {
   return playing ? '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 2.5h3v11h-3zM9.5 2.5h3v11h-3z"/></svg>'

@@ -1,7 +1,7 @@
 // MY FIELDS: fields picked on the map (kept in this browser, no accounts), list + map, zones, rates, exports.
 import { loadMyFields, saveMyFields, zones, fmtUnc, sourceLabel, withinNoise, nearestRgbDate, clearRgbDate,
          affineFromCorners, invertAffine, applyAffine, groupMedian, exportCheck, noDataReason, fieldRgbDate,
-         seriesChart, SOURCE_COLOURS, legendSpec, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS, CLASS_STYLES, classLegend, classByCrop, stageMarks, calendarChart, playIcon, nextFrame } from "./field_core.js";
+         seriesChart, SOURCE_COLOURS, legendSpec, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS, CLASS_STYLES, classLegend, classByCrop, stageMarks, calendarChart, playIcon, nextFrame, traitsSection } from "./field_core.js";
 const badge = (g, c) => { const k = cropStyle(g, c); return `<span class="crop" style="--c:${k.colour}"><i></i>${k.label}</span>`; };
 
 import { buildTaskData } from "./isoxml.js";
@@ -144,7 +144,7 @@ async function openField(f) {
   const mz = f.year === MZ_SEASON ? await multiZones(f.area) : null, zm = mz?.meta.fields[String(f.id)] || null;
   const curve = d.calendar?.curves[d.calendar.fields[String(f.id)]] || null;          // crop calendar (wheat / barley only)
   CUR = { ...f, pb, s, geo, weeks: d.series.weeks, rgb: d.rgb, week: w0, layer: "lai", tab: CUR?.tab || "overview", mz, zm, zmode: zm ? "multi" : "period",
-          curve, stages: curve ? d.calendar.stages[curve.crop] : [] };
+          curve, stages: curve ? d.calendar.stages[curve.crop] : [], tr: d.traits?.fields[String(f.id)] || null };
   render();
   const arable = ARABLE.has(s.group), rates = ST.rates[f.id] || ["", "", ""];
   const det = document.getElementById("mf-detail"), cs = cropStyle(s.group, geo.properties.crop), saved = ST.fields.some(x => key(x) === key(f));
@@ -178,6 +178,7 @@ async function openField(f) {
       weather cell from the district's typical sowing day (${CUR.curve.sowing}). Not measured on this field. The same stages appear as
       dotted lines on the green LAI chart above.</p>` : ""}
       <h3>Weekly NDVI</h3><div id="mf-ndvi-chart"></div>
+      <div id="mf-traits"></div>
       <p class="note">${src}<br>Band: ± typical error. Shaded weeks: before sowing / after harvest. Dashed: selected week (week slider).</p>
     </div>
     <div data-pane="zones">
@@ -354,6 +355,8 @@ async function paint() {
   const ndviChart = seriesChart({ values: s.ndvi, unc: s.ndvi_unc, src: s.ndvi_src, season: s.season, week: w, weeks: CUR.weeks, max: 1, label: "NDVI" });
   document.getElementById("mf-lai-chart").innerHTML = laiChart;
   document.getElementById("mf-ndvi-chart").innerHTML = ndviChart;
+  const trBox = document.getElementById("mf-traits");
+  if (trBox) trBox.innerHTML = traitsSection({ tr: CUR.tr, season: s.season, week: w, weeks: CUR.weeks });
   // Overview: this field's weekly curve for the chosen layer (Zones -> green LAI), dashed line = the slider's week
   const ovNdvi = CUR.layer === "ndvi";
   document.getElementById("mf-ov-title").textContent = `This field through the season: weekly ${ovNdvi ? "NDVI" : "green LAI"} (band ± typical error, shaded = off-season, dashed = selected week)`;
