@@ -31,6 +31,9 @@ CALENDARS = [("Winterweichweizen", "wheat", "winter_wheat"), ("Wintergerste", "b
              ("Silomais", "silage_maize", "silage_maize"), ("Mais (ohne", "grain_maize", "grain_maize"),
              ("Kartoffeln", "potato", "potato")]
 MODEL_KEY = {k: m for _, k, m in CALENDARS}
+# grain maize district rows end in 2021 (no Destatis district yields after): its fitted calendar runs on the silage maize
+# row of the same district-year (same crop, same sowing day)
+INPUT_FROM = {"grain_maize": "silage_maize"}
 
 
 def calendar_crop(name):
@@ -92,10 +95,14 @@ def calendar_curve(crop, year, district, cell):
     """Daily development from sowing on the cell's weather (phase23 field_ensemble without the growth run)."""
     import phase23_ours_field as OF
     L = _load(crop)
-    m, d = L["m"], L["d"]
+    src = L
     i = L["row"].get((district, year))
+    if i is None and crop in INPUT_FROM:                  # grain maize: district data end 2021 -> same district-year
+        src = _load(INPUT_FROM[crop])                     # inputs (sowing day, day length) of silage maize
+        i = src["row"].get((district, year))
     if i is None:
         return None
+    m, d = src["m"], src["d"]
     dates, col, w = OF._weather(year)
     sow = pd.Timestamp(f"{year}-01-01") + pd.Timedelta(days=round(m.at[i, "doy_sowing"]) - 1)
     first = int((np.datetime64(sow.date()) - dates[0]).astype(int))

@@ -2,7 +2,7 @@
 // App shell and district data are stored at install; field files are stored as they are viewed (their URLs carry
 // ?v=<data version>, so a data rebuild never mixes old and new files); px.bin range requests are answered from a stored
 // full copy. A new APP_VERSION replaces the old caches on the next visit.
-const APP_VERSION = "2026-11-04b";
+const APP_VERSION = "2026-11-04c";
 const SHELL = `shell-${APP_VERSION}`, FIELD = "field-data", CDN = "cdn-libs";
 const SHELL_FILES = ["./", "./index.html", "./manifest.webmanifest", "./js/field_core.js", "./js/field_view.js", "./js/my_fields.js",
   "./js/isoxml.js", "./js/field_accuracy.js", "./icons/icon-192.png", "./icons/icon-512.png", "./data/meta.json", "./data/districts.geojson",
@@ -35,6 +35,14 @@ async function rangeFrom(full, range) {
     "Content-Range": `bytes ${a}-${b}/${buf.byteLength}` } });
 }
 
+// a stored field block answered as the 206 response it came from
+function partial(buf, range) {
+  const m = /bytes=(\d+)-(\d+)?/.exec(range || "");
+  const a = m ? +m[1] : 0, b = a + buf.byteLength - 1;
+  return new Response(buf, { status: 206, headers: { "Content-Type": "application/octet-stream", "Content-Length": String(buf.byteLength),
+    "Content-Range": `bytes ${a}-${b}/*` } });
+}
+
 self.addEventListener("fetch", e => {
   const req = e.request, u = new URL(req.url);
   if (req.method !== "GET") return;
@@ -49,15 +57,17 @@ self.addEventListener("fetch", e => {
       .catch(() => caches.match(req)));
     return;
   }
-  if (path.includes("/field/") && path.endsWith("/px.bin")) {                 // pixel blocks: whole file stored once
+  if (path.includes("/field/") && path.endsWith("/px.bin")) {                 // pixel blocks: only the requested field's bytes
     e.respondWith((async () => {
-      const key = u.href, cache = await caches.open(FIELD);
-      let full = await cache.match(key);
-      if (!full) {
-        try { const r = await fetch(key); if (r.ok) { await cache.put(key, r.clone()); full = r; } } catch (err) { /* offline */ }
-      }
-      if (!full) return fetch(req);
-      return rangeFrom(full.clone(), req.headers.get("Range"));
+      const range = req.headers.get("Range") || "", cache = await caches.open(FIELD);
+      const key = `${u.href}&range=${encodeURIComponent(range)}`;              // one stored entry per field block (a few KB)
+      const full = await cache.match(u.href);                                  // whole file stored by an older version
+      if (full) return rangeFrom(full.clone(), range);
+      const hit = await cache.match(key);
+      if (hit) return partial(await hit.arrayBuffer(), range);
+      const r = await fetch(req);                                              // the host answers with 206 Partial Content
+      if (r.status === 206) { const c = await r.clone().arrayBuffer(); cache.put(key, new Response(c)); }   // Cache API stores no 206
+      return r;
     })());
     return;
   }

@@ -5,7 +5,7 @@ import { loadMyFields, saveMyFields, zones, fmtUnc, sourceLabel, withinNoise, ne
 const badge = (g, c) => { const k = cropStyle(g, c); return `<span class="crop" style="--c:${k.colour}"><i></i>${k.label}</span>`; };
 
 import { buildTaskData } from "./isoxml.js";
-import { FV, loadSeason, attribution, url } from "./field_view.js";
+import { FV, loadSeason, loadTraits, attribution, url } from "./field_view.js";
 
 const ARABLE = new Set(["wheat", "barley", "other cereal", "rapeseed", "maize", "potato", "sugar beet"]);
 const ZCOL = ["#e34948", "#eda100", "#008300"];
@@ -48,8 +48,10 @@ function persist() { try { saveMyFields(window.localStorage, ST); } catch (e) { 
 const key = f => `${f.area}_${f.year}_${f.id}`;
 
 function keepOffline(f) {
-  const k = `${f.area}_${f.year}`, files = ["fields.geojson", "series.json", "rgb.json", "px.json", "px.bin"].map(n => new URL(url(`${k}/${n}`), location.href).href);
+  const k = `${f.area}_${f.year}`, files = ["fields.geojson", "series.json", "rgb.json", "px.json", "calendar.json", "traits.json"]
+    .map(n => new URL(url(`${k}/${n}`), location.href).href);
   navigator.serviceWorker?.controller?.postMessage({ type: "keep", urls: files });
+  pixelBlock(f.area, f.year, f.id).catch(() => {});          // the service worker keeps just this field's pixel bytes
 }
 
 export function add(f) {
@@ -144,7 +146,7 @@ async function openField(f) {
   const mz = f.year === MZ_SEASON ? await multiZones(f.area) : null, zm = mz?.meta.fields[String(f.id)] || null;
   const curve = d.calendar?.curves[d.calendar.fields[String(f.id)]] || null;          // crop calendar (wheat / barley only)
   CUR = { ...f, pb, s, geo, weeks: d.series.weeks, rgb: d.rgb, week: w0, layer: "lai", tab: CUR?.tab || "overview", mz, zm, zmode: zm ? "multi" : "period",
-          curve, stages: curve ? d.calendar.stages[curve.crop] : [], tr: d.traits?.fields[String(f.id)] || null };
+          curve, stages: curve ? d.calendar.stages[curve.crop] : [], tr: (await loadTraits(f.area, f.year))?.fields[String(f.id)] || null };
   render();
   const arable = ARABLE.has(s.group), rates = ST.rates[f.id] || ["", "", ""];
   const det = document.getElementById("mf-detail"), cs = cropStyle(s.group, geo.properties.crop), saved = ST.fields.some(x => key(x) === key(f));
