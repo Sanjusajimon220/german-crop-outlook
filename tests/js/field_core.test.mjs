@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc , leavesField, clearRgbDate, fieldUrl, noDataReason, zoomAllowed, areaToEnter, groupMedian, exportCheck, fieldRgbDate, areaRgbDate, legendSpec, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS, CLASS_STYLES, classLegend, classByCrop, stageMarks, calendarChart, playIcon, nextFrame, TRAITS, traitsSection, STAGE_LABELS, calendarNote } from "../../docs/js/field_core.js";
+import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc , leavesField, clearRgbDate, fieldUrl, noDataReason, zoomAllowed, areaToEnter, groupMedian, exportCheck, fieldRgbDate, areaRgbDate, legendSpec, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS, CLASS_STYLES, classLegend, classByCrop, stageMarks, calendarChart, playIcon, nextFrame, TRAITS, traitsSection, STAGE_LABELS, calendarNote, retrievalNote } from "../../docs/js/field_core.js";
 
 test("play / pause icon and the next frame of a time slider (stops at the end unless it loops)", () => {
   assert.match(playIcon(false), /<path d="M4 2.5v11l9-5.5z"/);
@@ -328,4 +328,9 @@ test("season timing label: crop named, regional and checked; other crops say why
   assert.match(calendarNote({ crop: "barley", sowing: "2021-09-25" }, []), /winter barley.*\+14 days/s);
   assert.match(calendarNote(null, [], "maize"), /only for winter wheat and winter barley/);
   assert.equal(calendarNote(null, [], "grass"), "");                          // non-arable: nothing
+});
+
+test("retrieval note only for crops the cereal-trained network was not made for", () => {
+  for (const g of ["maize", "sugar beet", "potato", "rapeseed"]) assert.match(retrievalNote(g), /trained on cereal canopies/);
+  for (const g of ["wheat", "barley", "other cereal", "grass / fodder", "other"]) assert.equal(retrievalNote(g), "");
 });

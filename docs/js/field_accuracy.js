@@ -95,6 +95,9 @@ export function fieldAccuracyHtml(d) {
     <div class="acc-grid wide">${charts}</div>
     <p class="note">— Copernicus LAI 300 m · <span style="color:#1baf7a">—</span> ours, after the fix · <span style="color:#e34948">—</span> ours, before · mean of all 300 m cells of each area, every 10 days</p></div>
   <div class="card" style="margin-top:16px"><h3>Limits</h3><ul>
+    <li>The LAI and chlorophyll network was trained on simulated cereal canopies. For maize, sugar beet, potato and rapeseed (broader,
+    flatter leaves) its values may be biased; crop-specific networks are being tested against SL2P, Copernicus LAI 300 m and
+    simulated canopies of each crop, and replace the cereal network for a crop only if they compare better. Cereals stay unchanged.</li>
     <li>The Landsat LAI used as truth for cloudy weeks is made with our own retrieval method (applied to Landsat images); a truth independent of our method (ground measurements) is still to come.</li>
     <li>All tests used seasons 2021–2025, which also guided the design; a final check on season 2026 follows once all methods are fixed.</li>
     <li>The weekly series runs from 1 October to 31 August; late harvests (sugar beet, maize) are not covered yet.</li>

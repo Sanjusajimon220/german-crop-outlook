@@ -256,6 +256,15 @@ export const STAGE_LABELS = { emergence: "emergence", stem_extension: "stem exte
   tassel: "tasselling", flowering: "flowering", dough_ripe: "dough ripe", canopy_closed: "canopy closed" };
 const STAGE_COLOUR = "#eb6834";
 
+// the PROSAIL network was trained on cereal canopies (upright leaves, cereal chlorophyll ranges); for broad-leaved crops its
+// values may be biased until crop-specific networks are tested (project log 2026-11-04)
+const NON_CEREAL = new Set(["maize", "sugar beet", "potato", "rapeseed"]);
+export function retrievalNote(group) {
+  return NON_CEREAL.has(group) ? `<p class="note"><span class="pill">note</span> Green LAI and chlorophyll come from a network
+    trained on cereal canopies. For ${group} (different leaf shape and angle) the values may be somewhat biased; crop-specific
+    networks are being tested and will replace it if they compare better.</p>` : "";
+}
+
 // label under "Season timing": what the calendar is, and how it compared with the satellite (project log 2026-11-04:
 // median green-LAI peak minus calendar heading over 20 area-seasons); other arable crops: why there is none
 const CAL_CROPS = { wheat: ["winter wheat", "+4 days (range −6 to +18)"], barley: ["winter barley", "+14 days (range −14 to +23)"] };
