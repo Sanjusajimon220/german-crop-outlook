@@ -10,7 +10,7 @@ Germany = MODIS tiles h18v03 + h18v04 (sinusoidal grid).
                  the number of such pixels (cloud-free share)
 Months February-October. Saved per year: data/processed/modis/modis_ndvi_<year>.npz
 (dates = composite start dates, codes, ndvi[dates, districts], n[dates, districts]); resumable.
-Run `python phase0_modis_districts.py 2000 2026`.
+Run `python phase0_modis_districts.py 2000 2026` (Terra); Aqua: set MODIS_SENSOR=MYD13Q1 (-> modis_aqua_ndvi_<year>.npz).
 """
 import os
 import sys
@@ -26,6 +26,9 @@ from rasterio.windows import Window
 API = "https://planetarycomputer.microsoft.com/api"
 OUT = os.path.join("data", "processed", "modis")
 TILES = ("h18v03", "h18v04")
+# sensor: MOD13Q1 Terra (default, the v9 input) or MYD13Q1 Aqua (Terra successor, review step 4, project log 2026-11-05)
+SENSOR = os.environ.get("MODIS_SENSOR", "MOD13Q1")
+PREFIX = {"MOD13Q1": "modis_ndvi", "MYD13Q1": "modis_aqua_ndvi"}
 _TOK = {}
 
 
@@ -124,13 +127,13 @@ def main():
     codes = list(np.load(os.path.join("data", "processed", "weather_daily.npz"))["codes"])
     grids = {t: tile_setup(t, codes) for t in TILES}
     for year in range(int(sys.argv[1]), int(sys.argv[-1]) + 1):
-        path = os.path.join(OUT, f"modis_ndvi_{year}.npz")
+        path = os.path.join(OUT, f"{PREFIX[SENSOR]}_{year}.npz")
         if os.path.exists(path):
             print(f"{year}: done before")
             continue
         t0 = time.time()
         items = {t: search("modis-13Q1-061", f"{year}-02-01T00:00:00Z/{year}-10-31T23:59:59Z", t) for t in TILES}
-        items = {t: [f for f in v if f["id"].startswith("MOD13Q1")] for t, v in items.items()}
+        items = {t: [f for f in v if f["id"].startswith(SENSOR)] for t, v in items.items()}
         dates = sorted({f["properties"]["start_datetime"][:10] for v in items.values() for f in v})
         nd = np.full((len(dates), len(codes)), np.nan, np.float32)
         nn = np.zeros((len(dates), len(codes)), np.int32)

@@ -1957,3 +1957,930 @@ Rules: (1) DESIGN ADOPTED if V2 beats the line for gaps > 30 d in every AREA (me
 20 area-seasons, for LAI and for NDVI. (2) Reported: per area and season tables; transfer penalty vs the pilot
 across-season result (E2b, same design).
 Scripts: phase12_area_rows.py (training rows per area-season), phase12_area_test.py (fits + evaluation, resumable parts).
+
+## 2026-10-17 — HR-VPP download for the benchmark (owner OK: ~1 GB, ~75-120 credits)
+Copernicus Data Space openEO: COPERNICUS_PLANT_PHENOLOGY_INDEX (PPI + QFLAG, 10-daily seasonal trajectories) for the 4 areas,
+seasons 2021-2025 (1 Oct - 31 Aug), and COPERNICUS_VEGETATION_PHENOLOGY_PRODUCTIVITY_10M_SEASON1 (SOSD, EOSD, MAXD, SOSV, EOSV,
+MINV, MAXV, AMPL, LENGTH, LSLOPE, RSLOPE, SPROD, TPROD, QFLAG) for 2021-2024; resampled to our 10 m grid (EPSG:32632).
+Script phase13_hrvpp_download.py (resumable, '.complete' markers). First area-season checked for real credits; stop if far above
+the estimate. Benchmark rules are pre-registered before any comparison. Owner: results go into the platform at the end.
+11:58 HR-VPP check: PPI job pilot 2024 FAILED (server: NoDataAvailable), 9 credits used. Free STAC query: the PPI trajectory catalogue on CDSE ends 2022-12-21 (414 items for our bbox, 2017-2022) -> seasons 2021-2022 available on CDSE, 2023-2025 only via WEkEO / CLMS portal (EU Login). Phenology (season 1) 2024 job still running. Next step decided with the owner.
+12:05 HR-VPP whole period: VITO/CDSE STAC asset links are internal s3:// (need account keys) -> no free direct access. Copernicus Land portal (land.copernicus.eu, EU Login, free, no credits) offers HR-VPP 2017-present -> proposed to the owner: download PPI seasonal trajectories (10-daily) + VPP season 1 for 2020-10 to 2025-08 over WGS84 box W 5.963 S 50.589 E 6.693 N 51.101 (covers all 4 areas). Credits so far for HR-VPP: 18 (9 lost on the failed PPI job). No further openEO HR-VPP jobs started.
+
+## 2026-10-17 — HR-VPP BENCHMARK: PRE-REGISTRATION (before any comparison; owner downloads HR-VPP from the Land portal)
+Data: HR-VPP PPI seasonal trajectories (10-daily) + QFLAG and VPP season-1 parameters, seasons 2021-2025, 4 study areas,
+resampled (nearest) to our 10 m grid; files in data/raw/hrvpp_portal/. Ours: final weekly series (fusion design V2, satellite-only).
+Fields: arable fields (wheat, barley, rapeseed, maize, potato, sugar beet), >= 0.5 ha, not partial, in-season weeks only.
+1. Clear-day consistency (no winner): on our measured weeks, Spearman correlation of our field green LAI vs HR-VPP PPI (same
+   10-day step, nearest date); reported per crop and season.
+2. Independent truth for cloudy weeks: Landsat 8/9 LAI on days when no clear Sentinel-2 value exists for the field (field mean,
+   >= 50 % clear). Score: Spearman correlation across fields per Landsat date, of (a) our weekly LAI and (b) HR-VPP PPI with the
+   Landsat LAI (PPI is a different quantity, so correlation, not RMSE). Ours better if (a) > (b) in >= 60 % of the Landsat dates
+   with >= 30 fields; reported per season.
+3. Season timing per field: our start / peak / end of season (first week above 50 % of the season amplitude, week of maximum,
+   last week above 50 %) vs HR-VPP SOSD / MAXD / EOSD: median absolute difference in days, per crop and season (agreement, no winner).
+One look per item; results logged before any change.
+Result AREA TEST (13:02; area_test_summary_log.txt; V2, a new area in a new season, whole dates hidden):
+ LAI: V2 beats the line for gaps > 30 d in 4/4 areas and 17/20 area-seasons -> DESIGN ADOPTED (line <= 30 d, radar > 30 d).
+ NDVI: 4/4 areas but 15/20 area-seasons (16 needed) -> DESIGN NOT ADOPTED: NDVI uses the straight line for all gaps.
+ Pooled uncertainty (uncertainty_V2.json) used for every platform value. Production models trained (lai 13:52, ndvi 14:51);
+ weekly series for the 20 area-seasons 14:54-15:4x.
+15:45 PIPELINE BUG found (logged before any fix): S2 NDVI = (B08 - B04) / (B08 + B04 + 1e-6) explodes where both reflectances are
+~0 (dark / nodata-like pixels): values down to -68,400 (south 2025: 380 pixel-dates > |3|; south 2022: 42; pilot 2023: 1; ...),
+plus 10,882 hidden values slightly outside [-1, 1]. LAI not affected (network inputs, not the ratio). Consequences: the NDVI area-test
+result (15/20, NOT adopted), the NDVI uncertainty table (line <= 15 d 14.9, live <= 30 d 11.6) and weekly NDVI are INVALID.
+Fix: NDVI invalid (NaN) where B04 + B08 < 0.01 or the result is outside [-1, 1] (S2 and Landsat); re-run retrieval, the NDVI part of
+the area test with the SAME pre-registered rule (V2 beats the line > 30 d in every area and >= 16/20 area-seasons), NDVI models,
+weekly series, export. Running data chain stopped (it would have exported contaminated NDVI).
+16:00 NDVI fix chain stopped at retrieval: local list 'ndvi' shadowed the new ndvi() in retrieval_landsat (UnboundLocalError); fixed (renamed), regression test added; chain restarted (nothing had been deleted).
+
+## 2026-10-17 18:27 — NDVI area test after the NDVI fix (result, one look)
+
+Re-run of the NDVI part of the area test with the fixed NDVI (no values outside [-1, 1]); same pre-registered rule
+(V2 beats the straight line for gaps > 30 d in every area and in >= 16/20 area-seasons). The contaminated earlier result
+(area_test_summary_log_contaminated.txt) is void. The chain had stopped at 16:22 (session end) and was resumed at 16:32
+from the finished rows; nothing was redone.
+
+RESULT ndvi: V2 beats the line > 30 d in 4/4 areas and 16/20 area-seasons -> DESIGN ADOPTED (exactly at the threshold).
+Mean RMSE > 30 d, line -> design: north 0.112 -> 0.109, pilot 0.125 -> 0.105, selhausen 0.124 -> 0.099, south 0.151 -> 0.144.
+Honest reading: the gain is clear in pilot and Selhausen, small in north and south. Gaps <= 30 d keep the line.
+LAI result unchanged (4/4, 17/20). Next: NDVI models, uncertainty table, weekly series, platform export (same chain).
+
+## 2026-10-19 — Owner decision: field benchmark plan (after the platform)
+Replicate the district approach at field level: fixed test sets first, a benchmark ladder per job, improve until the field
+model beats all of them. Jobs: (1) weekly LAI / NDVI (line, SL2P, HR-VPP, radar->NDVI), (2) LAI forecast by assimilation
+(persistence, crop model alone, WOFOST + same satellite data), (3) field water use (FAO-56, WOFOST, eddy covariance TR32 /
+ICOS), (4) field yield (district yield, simple satellite index, WOFOST + assimilation, ML on satellite features, published
+PROMET field errors). Starting point job 4 (YieldSAT, 7 Oct): simple index 1.00, district 1.28, physics field model 1.38 t/ha.
+Order: platform -> HR-VPP / LAI 300 m benchmark -> written field benchmark plan (owner approval) -> benchmarks -> improvement.
+Report wording stays neutral (measured tables, no 'better than' slogan).
+
+## 2026-10-19 — HR-VPP benchmark, item 4 added: CGLS LAI 300 m level check (PRE-REGISTRATION, before any download)
+Owner OK (2026-10-17: '300 m LAI check together with HR-VPP, after the platform'). Data: Copernicus Global Land LAI 300 m
+version 2 (10-daily, RT/consolidated as delivered), seasons 2021-2025, same box as HR-VPP (W 5.963 S 50.589 E 6.693 N 51.101),
+owner downloads from the Land portal into data/raw/hrvpp_portal/. Never used for training or tuning.
+Method: for every CGLS 300 m pixel whose area lies >= 90 % inside one of our 4 study areas, our weekly 10 m green LAI is
+averaged over ALL its 10 m pixels with a value (fields and non-field land where we have values; share of covered area
+reported) at the week nearest the CGLS 10-day date (<= 3 days apart). Only pixels where >= 50 % of the 300 m area has our
+values and the CGLS quality flag is valid. Reported per season and month: bias (ours - CGLS), RMSE, Pearson r, and the same for
+our MEASURED weeks only. Reading: a LEVEL check (no winner): CGLS is effective LAI of mixed 300 m land, ours is green LAI
+of 10 m arable pixels; a systematic bias is reported and explained, not fitted away. One look; results logged before
+any change.
+
+## 2026-10-19 — Owner decision: jobs 5 and 6 added to the field benchmark plan
+(5) Nitrogen: a) yearly N need per field by the Duengeverordnung calculation (farmer adds Nmin / organic N; red areas -20 %),
+b) in-season N status from canopy chlorophyll (CCC), c) variable-rate map (zones + ISO-XML, built). Benchmarks: uniform rate,
+official calculation without satellite, 'greener zone -> less N'. Check against measured plant N (patchCROP, state trials).
+(6) Crop protection: a) field crop stage (BBCH) from calendar + satellite curve vs DWD observations / HR-VPP dates; b) leaf-disease
+risk from field weather at the right stage vs advisory monitoring data. Benchmarks: district calendar alone, public warnings.
+Rule for the product: information (N-status map, stage, risk index), not instructions, until a job passes its test.
+Order in the plan: jobs 1-2, 6a, 5b-c, 3, 4, 6b.
+
+## 2026-10-19 — Owner decision: product modules A-H added to the field plan (step by step)
+A multi-year productivity zones (5 seasons of 10 m LAI); B yield gap + limiting factor (water / nitrogen / other);
+C farmer data feedback (own yield maps and records; needs accounts); D strip trials ('prove it on your field');
+E spray windows (weather forecast + crop stage); F irrigation advice (potato, maize); G grain protein + harvest timing;
+H economics (most profitable N rate). Built step by step: A-D first in the field benchmark plan, E-H after jobs 3, 5, 6 pass.
+'Increase yield' is claimed only after strip trials (D) or farmer yield maps (C) show it on real fields.
+
+## 2026-10-19 — Crop coverage of the 4 field areas + owner decision: fifth NRW area for grain maize (in the plan)
+NRW register, 20 area-seasons: winter wheat 290-670 fields per area-season, winter barley 157-227, silage maize 85-629
+(north ~1,000 ha), potato 22-241 in pilot / selhausen / north but 1-7 in south, grain maize ('Mais (ohne Silomais)') only
+1-34 fields (1-52 ha) -> too few to test. Owner decision: add a fifth 8 x 8 km NRW area in the grain-maize region (Lower Rhine /
+Muensterland), chosen from the register by the most grain-maize fields (free check, candidate shown to the owner first);
+download (~85 credits, ~4 GB S2 + S1, Landsat free) approved separately. All field benchmark results reported per crop.
+Owner (same day): keep the current 4 areas for now; the fifth (grain maize) area stays an open item in the plan, decided later.
+
+## 2026-10-19 — Weekly series review (owner: fixes later, keep the current steps)
+Seen in the weekly 10 m series: radar fills 33-62 % of pixel-weeks (mostly winter / long cloudy spells); winter radar
+artefacts (mid-January jump of almost all wheat fields, sudden NDVI drops in February: frost / snow / wet soil); single
+'measured' dips from haze / cloud edges missed by the mask; pre-sowing weeks show previous / cover crop (labelled in the
+platform); Selhausen 2024 32 % of pixel-weeks without a value (no clear image before March). Deferred to the field benchmark
+plan (first items): winter radar filter (frost / snow / wet soil) re-tested with the area-test rule; plausibility check for
+single bad clear images. Current steps unchanged.
+
+## 2026-10-20 — Owner decision: standalone installable app (PWA), option 2
+Crop Outlook as an installable web app: manifest (name, icons, colours), service worker (app shell + district data cached at
+install ~4 MB; field maps / series / Sentinel-2 images cached when viewed; data of My-fields fields cached when added; update
+when online), install button, offline note. Needs its own web address (own Netlify site / domain: owner, at deployment).
+Built after the review fixes of the field-platform branch. Native store apps (option 4) later, after accounts and the live season.
+
+## 2026-10-20 — Owner: field benchmark plan APPROVED (yield last); platform first
+Plan 'Field Benchmark Plan (NRW)' (Claude Doc 9b53c0fe) approved as written, with one change: job 4 (field yield, needs measured
+yield data) moves to the very end of the order. Data requests / downloads still asked for one by one. Next: the rest of the
+platform (My Fields = the four study areas with a crop map; crop layer, hover, search on the Explorer map; Sentinel-2 image
+section removed from panels by owner decision), then the plan's steps.
+
+## 2026-10-20 — Step 4, fix 1 (winter radar filter): implementation details fixed BEFORE any result
+Rule as in the approved Field Benchmark Plan (section 3). Amendment (data availability, before results): the district daily
+weather (HYRAS/DWD, weather_daily_v8) has no snow-cover variable; snow is therefore taken from the weather itself.
+A Sentinel-1 date is flagged if, at the area's district: tasmin < -2 C on that day or the day before (frost), OR >= 1 mm
+precipitation on a day with tas <= 0.5 C within the previous 3 days (snow), OR > 10 mm precipitation in the previous 2 days
+(wet soil). Flagged radar dates are not used; the model takes the nearest unflagged radar date within +-3 days (else no
+radar feature for that date). Test: the area test (same hidden values, seeds, models, V2) re-run with the filter in
+area_rows_rf / area_parts_rf; compare the design (line <= 30 d, V2 > 30 d) per area on hidden values Nov-Feb and Mar-Aug.
+ADOPT if Nov-Feb RMSE falls for LAI and for NDVI in >= 3 of 4 areas AND Mar-Aug RMSE is not worse by > 0.01 LAI / 0.002 NDVI
+(pooled over the 20 area-seasons). Then confirmed once on season 2026 (final check) before it counts as confirmed.
+Amendment (owner asked to check for real snow data, 20 Oct, before any result): DWD daily station data on disk (KL Tageswerte,
+data/raw/dwd_stations + dwd_stations_recent) contain measured snow depth SHK_TAG. Snow is now: snow depth >= 1 cm on the radar
+date at the nearest DWD station (within 40 km of the area centre) that reported a value that day; only if no such station
+reported, the weather proxy above is used. Coverage 2020-10 to 2025-08: Noervenich 1,691 / 1,796 days, Geilenkirchen 1,226,
+Moenchengladbach 425. No ESA / DLR snow product is on disk (checked). Frost and wet-soil rules unchanged.
+
+## 2026-10-20 — HR-VPP / LAI 300 m download setup (owner OK for LAI 300 m)
+- CLMS API (owner's service key, read from credentials/, never printed): LAI 300 m v2 (UID a8126fdd..., CDSE source) is delivered
+  clipped to our box. 18:57 all 59 monthly requests queued (2020-10..2025-08) by 06_field/phase13_lai300_run.py (detached;
+  resumable; log data/raw/hrvpp_portal/lai300/lai300_log.txt). Fixed: request dates were local time -> now UTC.
+- HR-VPP (PPI ST + QFLAG, VPP s1 SOSD/MAXD/EOSD) is WEkEO-hosted only (CDSE PPI ends 2022-12). WEkEO HDA via the owner's API
+  token (06_field/phase13_wekeo.py). Incident: a failed first search printed the token inside a requests error message into the
+  session log (not into chat, files or the repo); script fixed to never show request details; owner asked to refresh the token.
+  WEkEO search blocked until the owner accepts the 'Copernicus Land Monitoring Service Data Policy' in the WEkEO account.
+- 19:20 HR-VPP download started (owner OK: 322 files, 36.9 GB transfer, tile 31UGS only - all 4 areas lie inside it;
+  cut per area +200 m in the native EPSG:32631 grid, temporary full tiles deleted; ~1-2 GB kept). Script
+  06_field/phase13_hrvpp_run.py, log data/raw/hrvpp_portal/hrvpp/hrvpp_log.txt. Test file 2020-10-01 PPI: 906x906 px per
+  area, 97-100 % valid. AMENDMENT (data limit, before any comparison): WEkEO HR-VPP ends with 2024 -> HR-VPP items 1-3 use
+  seasons 2021-2024 (pre-registration said 2021-2025; season 2025 not yet produced).
+
+## 2026-10-21 — LAI 300 m data complete (CDSE route; CLMS portal down)
+- Laptop slept 22:07-10:09 (lid); all runs resumed. CLMS requests never finished (14 h In_progress; portal down 21 Oct)
+  -> switched to CDSE eodata S3 (owner's S3 keys in credentials/, never printed): 06_field/phase13_lai300_cdse.py reads only
+  our box from each COG (no resampling, EPSG:4326 300 m grid). 177 dates 2020-10-10..2025-08-31 (most consolidated RT per
+  date; RT6 for 175), layers lai/rmse/qflag/nobs, 708 files, 15 MB, all 245x172 px, all >= 50 % valid. Test date median LAI
+  1.2 (Oct). All 59 CLMS requests cancelled (204), old runner stopped.
+- HR-VPP: WEkEO profile token lasts ~1 h; run paused overnight, resumed 10:15 with a fresh token (42/322).
+
+## 2026-10-21 11:05 — HR-VPP items 1-3: implementation details fixed BEFORE any comparison (clarifies the 17 Oct pre-registration)
+- Fields: crop group wheat, barley, rapeseed, maize, potato, sugar beet; registered area >= 0.5 ha; not partial (>= 99 % inside
+  the 8 x 8 km area); in-season weeks = season_mask (fv2_platform) of the field's weekly mean LAI. Seasons 2021-2024 (HR-VPP ends 2024).
+- HR-VPP grid: 31UGS cuts (EPSG:32631) sampled nearest at our 10 m pixel centres (EPSG:25832). PPI used where the ST QFLAG marks
+  the value as valid (flag decoding written down from the product manual before use); field mean over valid pixels, >= 50 % of
+  the field's pixels needed.
+- Item 1: 'measured week' = >= 50 % of the field's pixels have source MEASURED in that week; PPI date = nearest 10-daily date
+  (<= 5 days). Spearman across fields per crop and season over all (field, week) pairs.
+- Item 2: Landsat field mean needs >= 50 % of field pixels with a Landsat value; 'no clear Sentinel-2' = < 50 % of the field's
+  pixels MEASURED in our week nearest the Landsat date. Ours = our weekly field mean at that week; HR-VPP = PPI field mean at
+  the nearest 10-daily date (<= 5 days). Per Landsat date with >= 30 such fields: Spearman(ours, Landsat) vs
+  Spearman(PPI, Landsat). Verdict: ours better if it wins on >= 60 % of ALL qualifying dates pooled over seasons 2021-2024;
+  per-season shares reported. Ties count as not won.
+- Item 3: our field weekly mean LAI inside the season mask; amplitude = max - min inside the mask; start = first week above
+  min + 50 % amplitude, peak = week of max, end = last week above min + 50 % amplitude. HR-VPP SOSD/MAXD/EOSD (season 1, year =
+  harvest year; YYDOY decoded) field median over valid pixels. Median absolute difference in days per crop and season.
+
+## 2026-10-21 11:10 — RESULT item 4: CGLS LAI 300 m v2 level check (one look; benchmark/lai300_summary.csv)
+(First start failed at import before any computation - not a look.) 177 CGLS dates, 4 areas, seasons 2021-2025; 300 m cells
+>= 90 % inside an area and >= 50 % covered by our 10 m values (mean coverage 0.89; median 679 cells per area-date).
+All weeks: n 393,699 cell-dates, bias (ours - CGLS) -0.13, RMSE 0.62, Pearson r 0.79 (seasons r 0.75-0.83, bias -0.04..-0.18).
+Measured weeks only: bias -0.12, RMSE 0.67, r 0.79 -> the filled weeks agree with CGLS as well as the measured ones.
+By month: Jun-Jan bias near 0 (-0.15..+0.02); Mar-May ours lower by 0.27-0.31 (spring growth: CGLS higher). Areas: north -0.06,
+pilot -0.07, Selhausen -0.15, south -0.27 (south: highest r 0.84). Reading (level check, no winner): our level matches the
+official 300 m product within ~0.1-0.3 LAI with r ~0.8; the spring gap is a known difference (CGLS effective LAI of mixed
+300 m land incl. grass, hedges and trees greening earlier than arable fields) - to be examined, not fitted away.
+
+## 2026-10-21 11:15 — RESULT fix 1 (winter radar filter: frost / DWD snow / wet; one look; fix1_summary_rf_out.txt)
+Same hidden values with vs without the filter; pre-registered rule needs LAI AND NDVI to pass.
+LAI: Nov-Feb RMSE better in 3/4 areas (pilot 0.273->0.265, Selhausen 0.453->0.408, north 0.604->0.598; south worse 0.474->0.494);
+     Mar-Aug pooled 0.538 -> 0.546 (+0.008, limit +0.01) -> pass.
+NDVI: Nov-Feb better in 2/4 (Selhausen, south; pilot and north worse); Mar-Aug 0.0867 -> 0.0875 (+0.0008) -> fail.
+RESULT: fix 1 NOT adopted. Weekly series and platform stay unchanged. Observations (post hoc, not acted on): the 'wet' rule
+(> 10 mm) also removes radar dates in spring/summer, which explains the small Mar-Aug loss; the winter gains are small
+(-0.01..-0.05 LAI) except Selhausen. Adopting for LAI only would be a new rule -> it would need a new pre-registered test on
+data not used here (e.g. season 2026), not this result.
+
+## 2026-10-21 11:45 — Step 4, fix 2 (single bad clear images): implementation details fixed BEFORE any result
+Rule as in the approved plan (section 3): a measured S2 pixel value is flagged when it lies below BOTH neighbouring measured
+values of that pixel (previous and next clear S2 value) by more than 3 x its uncertainty, and the radar estimate for that date
+does not show the drop; flagged values are treated as cloudy. Adopted if flagged values differ from Landsat at least twice as
+much as unflagged ones (median absolute difference, field means) and fewer than 2 % of measured values are flagged.
+Details: uncertainty = per-pixel lai_sd (LAI) / NDVI_MEASURED_SD (NDVI), as in the weekly series. Radar estimate = production
+re-analysis (line between the two neighbours + V2 re model, radar changes a->i->b); 'shows the drop' = radar estimate below
+min(neighbours) - 3 x uncertainty; flagged only if it does not. (The production model was trained on these seasons: used only
+as a plausibility check, disclosed.) First and last clear value of a pixel are never flagged.
+Test: S2 dates with a Landsat image within 1 day; per field and date, field mean of flagged S2 values vs Landsat on the SAME
+pixels, and the same for unflagged values; a field-date group counts if >= 10 pixels have both values. Score: median |S2 - Landsat|
+flagged vs unflagged, pooled over 4 areas x 2021-2025. Judged for LAI and NDVI separately; each target adopted only on its own
+pass (the flags are per target). If adopted: weekly series re-made with flagged values removed, then the season-2026 final check.
+
+## 2026-10-21 12:25 — RESULT fix 2 (single bad clear images; one look; fix2_out.txt, benchmark/fix2_*.csv)
+LAI: 1.67 % of measured values flagged (< 2 %); median |S2 - Landsat| (field means, same pixels, Landsat <= 1 day) flagged 0.538
+     (12,180 field-date groups) vs unflagged 0.192 (262,465) -> ratio 2.80 (>= 2) -> PASS -> fix 2 ADOPTED for LAI.
+NDVI: 5.17 % flagged (> 2 % limit); flagged 0.118 vs unflagged 0.043 -> ratio 2.78 -> FAIL (share) -> NOT adopted for NDVI.
+Reading: the flagged LAI dips really are bad values (2.8x further from Landsat). For NDVI the fixed 0.02 uncertainty is too
+small, so ordinary NDVI noise is flagged too (post hoc observation; any NDVI variant needs a new pre-registered test).
+Next (pre-registered consequence): weekly LAI series re-made with the flagged LAI values treated as cloudy (NDVI unchanged),
+platform export redone; season 2026 final check later. Item 4 (LAI 300 m) was run on the series before fix 2 (disclosed).
+HR-VPP download restarted 12:02 with the owner's WEkEO username / password (automatic token renewal); ~70/322 done.
+Owner decision 2026-10-21 (after fix 2): the fix-2 LAI series goes to the platform regardless of any later check (fix 2 was
+decided by its own Landsat test). Item 4 (LAI 300 m) is re-run once on the new series as a disclosed second run
+(benchmark/lai300_summary_after_fix2.csv), reported next to the first; both shown in the platform accuracy panel with the
+fix-2 Landsat result. A clearly worse item-4 result would be investigated, not used to undo fix 2.
+
+## 2026-10-21 ~14:30 — Fix 2 rebuild done (weekly LAI series + platform export, 20 area-seasons)
+Old files kept as weekly_pixels_V2_before_fix2.npz. Field test suite 48/48 passed (incl. the weekly integration test, which
+failed against the pre-fix files). Change (benchmark/fix2_rebuild_summary.csv, means over 20 area-seasons): 4.3 % of pixel-weeks
+changed by > 0.05 LAI (3.9 % lifted, 0.3 % lowered), mean change +0.02, +0.48 where changed; measured weeks 35.6 % -> 35.1 %,
+radar 37.6 % -> 38.5 %. Largest: north 2024 9.2 %, Selhausen 2023 8.9 %, south 2023 7.9 %. Site folder not rebuilt yet (owner:
+platform update after all steps). Item 4 second run (after fix 2) started.
+
+## 2026-10-21 — Item 4 (LAI 300 m), second disclosed run on the fix-2 series (benchmark/lai300_summary_after_fix2.csv)
+Same method, same cells. All weeks pooled: bias -0.133 -> -0.113, RMSE 0.616 -> 0.609, r 0.791 -> 0.792. Better or equal in
+every season (bias, RMSE), every area and 11/12 months (RMSE; Sep unchanged); r unchanged or slightly higher except season
+2024 (0.800 -> 0.799). Measured weeks only: bias -0.124 -> -0.111, RMSE 0.674 -> 0.671. Reading: a small, consistent
+improvement in the level agreement, as expected from removing false low values; the spring gap (Mar-May -0.25..-0.29) remains.
+- 2026-10-21: project report (Claude Doc df327dc3) updated: new Section 9h (benchmark steps 1-5 with all results), working plan steps 1, 1b, 3, 4 ticked, steps 2 and 5 annotated, report date 21 Oct.
+
+## 2026-10-21 — Owner: order after the HR-VPP check confirmed
+After HR-VPP items 1-3: one platform update (fix-2 LAI, accuracy panel with all benchmark results, two UI fixes: empty
+study-area view on early tab click, German crop names), then Module A -> Job 6a -> WOFOST + Job 2 -> Job 3 -> accounts / C / D /
+live pipeline -> Job 5 -> Module B -> Job 4 -> E/F/H. Data requests (patchCROP, LWK NRW trials, field yields, ICOS) to be
+started early, each with the owner's OK.
+
+## 2026-10-21 — HR-VPP decoding fixed BEFORE any comparison (source: HR-VPP Product User Manual ST + VPP, issue 2.5)
+- ST-PPI: int16, physical = DN x 0.0001 (0-3), -32768 = no value. 10-daily dates 1st / 11th / 21st.
+- ST-QFLAG (uint8): 5 high, 4 medium, 3 low (>8 / 3-8 / 1-2 clear observations in a 91-day window), 2 filled (interpolation),
+  1 filled (extrapolation), 0 no data. 'Valid' for items 1-2 = QFLAG >= 1 (HR-VPP's own product incl. its gap filling, as ours
+  includes ours); secondary report with QFLAG >= 3 (observation-backed only).
+- VPP SOSD / MAXD / EOSD: YYDOY (e.g. 18030 = DOY 30 of 2018), 0 = no value. VPP-QFLAG: 10 high, 7-9 medium, 4-6 low,
+  2 filled, 1 no season, 0 no data -> valid = >= 2.
+- Year assignment: a season belongs to the year of its PEAK; season 1 = the first season (by peak date) in that year.
+  Winter crops (peak May-June) and spring crops (peak July-August) of our season Y therefore sit in VPP year Y.
+  Known limitation (disclosed now, not chosen after results): where a cover crop or the previous crop peaks earlier in the
+  same calendar year, season 1 can be that crop and the main crop season 2, which we did not download (s1 as pre-registered).
+  Item 3 is reported per crop so this shows up; any season-2 check would be a separate, logged step.
+- 2026-10-21: platform fixes (worktree, not committed; owner checks locally first): (1) My fields opened before my_fields.js
+  loaded stayed empty -> the module now draws the open tab when it finishes loading (browser check: view drawn after an early
+  click); (2) 57 German register names (flower strips, ecological focus strips, meadow orchards, cucumber, lettuce, mixed crops,
+  fodder beet, ...) now shown in English (field_core.js SPECIAL; JS test added, 41/41 pass; only 'Phacelia' kept as is).
+  Items 1-3 code written with tests (phase16_hrvpp_items.py, 6/6 pass); runs when the HR-VPP download is complete.
+
+## 2026-10-21 15:15 — HR-VPP download complete; items 1-3 started (one look)
+322/322 files per area (153 PPI + 153 ST-QFLAG dates 2020-10-01..2024-12-21, 16 VPP s1 files 2021-2024), no duplicate or
+missing date, 895 MB kept. 3 broken transfers re-fetched automatically. Versions: Oct-Dec 2020 V101, all later V105 (disclosed;
+only pre-season weeks of 2021 use V101). Items 1-3 run with phase16_hrvpp_items.py (tests 6/6) on the fix-2 weekly series.
+
+## 2026-10-21 ~15:40 — RESULT HR-VPP items 1-3 (one look; benchmark/hrvpp_item*_*.csv, hrvpp_items_out.txt)
+Fields: 16 area-seasons (4 areas x 2021-2024), 711-1,616 arable fields each.
+Item 1 (agreement, measured weeks, 219,927 field-weeks): Spearman ours vs PPI 0.84-0.95 per crop and season
+  (wheat 0.91-0.95, barley 0.89-0.93, potato 0.91-0.95, sugar beet 0.90-0.94, maize 0.88-0.92, rapeseed 0.84-0.92).
+Item 2 (cloudy weeks, Landsat truth; 195 qualifying Landsat dates, median 241 fields per date): ours better on 169/195 dates
+  (87 %; per season 26/32, 43/47, 59/69, 41/47); median Spearman with Landsat ours 0.880 vs HR-VPP 0.808 (median gain +0.065).
+  Secondary (PPI QFLAG >= 3): identical counts (169/195), median 0.880 vs 0.809.
+  RESULT item 2: OURS BETTER under the pre-registered rule (>= 60 % of dates).
+  Disclosure: the Landsat LAI is produced by our own retrieval network (applied to Landsat), so ours and the truth share the
+  retrieval method; rank correlation removes level and scale differences but not shared method behaviour. Landsat is never
+  used in the weekly series. A truth fully independent of our method (ground LAI, SL2P) remains a later check.
+Item 3 (season timing vs VPP season 1, 18,240 field-seasons per event): peak agrees well (median |diff| 6-22 days; signed
+  median -6..+18). Start: ours later by 15-48 days; end: ours earlier by 13-49 days in every crop and season -> systematic
+  definition difference (ours = 50 % of the season amplitude, HR-VPP SOS/EOS at a lower level of the green-up / green-down)
+  plus our series ending on 31 August (sugar beet / maize green-down continues into autumn: end differences 37-49 days).
+  Reading: no winner; timing of the peak is consistent, start / end are defined differently.
+- 2026-10-21: report Section 9h step 5 filled with items 1-3 results + Figure 9h-4; working plan step 5 ticked.
+
+## 2026-10-21 ~17:30 — Platform: field benchmark results on the Accuracy page (worktree, not committed; owner checks first)
+06_field/fv2_benchmark_export.py -> docs/field/benchmark.json (42 KB; logged results only, nothing recomputed; version stamp
+'benchmark' in field/index.json). docs/js/field_accuracy.js renders on the Accuracy page: 1 weekly method + area test
+(17/20, 16/20) + uncertainty table; 2 fixes (fix 1 not adopted, fix 2 adopted for LAI); 3 HR-VPP items 1-3 (scatter of the
+195 Landsat dates, crop x season table, season-date boxes); 4 LAI 300 m (before/after fix 2, 4 area time series); limits.
+Method page: field-level paragraph, outdated 'field is phase 2' removed. sw.js APP_VERSION 2026-10-21a (+ new module).
+Browser check: desktop, phone width (no horizontal scroll), light and dark mode, no console errors.
+Tests: Python field suite 58/58, JS 46/46.
+- 2026-10-21 17:25: committed 04c337c (Sanju Sajimon) on field-platform; site folder rebuilt (2,942 files, 1.31 GB; backup D:/groundtruth-earth-site-backup-20261021-172449); owner uploads to Netlify.
+
+## 2026-10-21 — Module A (productivity zones): design and test rule fixed BEFORE any result (owner OK: 3 zones, DGM1 download)
+Zones = 'zones of consistent crop growth' (relative; no yield data yet - labelled so in the platform).
+Index per 10 m pixel and season: in-season sum of weekly green LAI (fix-2 series; season mask of the pixel's field that
+season, arable crop groups only), divided by the share-weighted mean of that field that season (relative growth, 1.0 = field
+mean). Multi-season map = mean of the relative values over the available arable seasons. Zones per field (register
+boundaries of the latest season): 3 classes by the field's tertiles of the multi-season map; headland pixels excluded;
+patches < 0.1 ha merged into the surrounding zone (majority filter).
+Test (plan rule, made precise): leave-one-season-out over 2021-2025: zones from the other seasons only, then in the held-out
+season the mean relative growth per zone; per field Spearman of (zone rank 1-3) vs (held-out zone means). Fields: >= 2 ha,
+fully inside the area, arable in >= 3 seasons incl. the held-out one. PASS if Spearman >= 0.5 in >= 70 % of fields in EVERY
+held-out season. Reported, no pass/fail: per crop and area; share of 'flat' fields (zone-mean spread < 5 %); absolute size of
+the zone difference in green LAI at the season peak.
+Plausibility checks (reported, no pass/fail, written down now): (a) soil: BK50 available water capacity / soil class per zone;
+(b) terrain: NRW DGM1 elevation, slope and a wetness index (TWI) per zone. Expected: weak zones more often on low water
+capacity, slopes / hilltops or wet hollows. Yield check later (Job 4 / data requests).
+
+## 2026-10-21 ~18:30 — RESULT Module A zone stability (one look; field_v2/zones/zones_test.csv, zones_out.txt)
+2,218 fields (>= 2 ha, arable >= 3 seasons): pilot 661, Selhausen 414, north 604, south 539; 9,592 field x held-out tests.
+Zone order kept (Spearman >= 0.5) in the held-out season: 2021 82.5 %, 2022 88.9 %, 2023 84.0 %, 2024 83.1 %, 2025 89.8 %
+-> RESULT: PASS (rule >= 70 % in every held-out season). By area 84.6-87.1 %; by crop 81.8 % (maize) - 87.7 % (wheat).
+Size: 35.6 % of field-tests 'flat' (zone means differ < 5 %); median spread of zone means 6.7 % of the field mean; median
+peak-LAI gap strong - weak zone 0.24 LAI. Reading: the order of zones repeats in unseen seasons in most fields, but in about a
+third of fields the differences are small. Caution (written before the plausibility checks): stable non-crop effects (tree
+shade, hedges, mixed edge pixels beyond the headland) would also pass a stability test -> soil / terrain checks next.
+
+## 2026-10-21 ~19:00 — Module A plausibility checks (pre-written, no pass/fail; zones/zone_checks*.csv)
+2,180 fields, weak minus strong zone mean (share of fields where the weak zone is lower / higher):
+- BK50 plant-available water nFK: lower 39.0 % / higher 27.6 % (rest: same soil unit - BK50 is 1:50,000, often one unit per
+  field); among fields with a soil difference 59 % weak = less water.
+- Slope: weak zone steeper in 59.4 % (median +0.04 deg).
+- Wetness index TWI: weak zone DRIER (lower TWI) in 67.5 % (median -0.31) -> weak zones mostly on upper / convex positions,
+  strong zones in receiving lower positions, rather than in wet hollows.
+- Elevation: weak zone higher in 53.9 % (median +0.05 m).
+Post hoc (marked): fields with zone spread >= 5 %: nFK 43.3 / 27.8 %, slope 60.9 %, TWI drier 69.7 % - same pattern, stronger.
+Reading: zones follow soil water and terrain in a consistent direction (water supply), so they are not only non-crop artefacts;
+the effects are moderate. Yield check still open (Job 4).
+
+## 2026-10-21 ~19:40 — Module A in the platform (worktree, not committed; owner checks first)
+fv2_zones_export.py -> docs/field/<area>_2025/zones.png (800 x 800 grey, 0 / 85 / 170 / 255) + zones.json (per field: held,
+tests, spread, seasons, weak - strong slope / TWI / nFK; NaN written as null - bug found in the browser check, test added);
+field data version bumped so cached browsers fetch the new files. My Fields 'Zones & export': 2025 fields with zones get
+'5 seasons (2021-2025)' (default) or 'This season, chosen period'; plain summary from zoneSummary (reliability: held / tests
+>= 0.8 reliable, >= 0.6 fairly reliable, else weak; uniform if spread < 5 %; likely reason from TWI <= -0.3 / >= 0.3, slope
+>= 0.5 deg, nFK <= -10 / >= 10 mm); headland pixels take the middle zone in maps and exports. Browser check: pilot 8702226
+(uniform, 3 of 5) and 8228782 (5 of 5, +26 %, drier upper part); no console errors; narrow width OK. sw APP_VERSION 2026-10-21b.
+Tests: JS 47/47, zone Python tests 13/13.
+- 2026-10-21 ~20:00: Zones & export tab redesigned after owner feedback (confusing): three numbered steps (check zones ->
+  enter a rate per zone -> export), zone map with hectares per zone (edge pixels weighted by their field share) in the tab
+  itself, product choice (nitrogen kg N/ha, seed, other; written into ISO-XML and GIS), 'same rate for all zones', field
+  total, disabled export buttons visibly greyed, ISO-XML usage note. JS tests 51/51; browser check on 8910847 (2.6 / 4.9 /
+  2.9 ha; 160 all -> 1,653 kg N; weak 150 -> 1,627 kg N; exports enabled only with all rates). sw APP_VERSION 2026-10-21c.
+- 2026-10-21: USB archive copy verified: 3,304 files (E:\vista_archive, MANIFEST.csv; copy also in docs/usb_archive_manifest_20261021.csv).
+  Originals on D NOT deleted (deletion blocked by the safety system; owner decides).
+- 2026-10-21 18:36: committed e5ab6f1 (Sanju Sajimon) on field-platform; site folder rebuilt (2,950 files, 1.31 GB; backup D:/groundtruth-earth-site-backup-20261021-183612); owner uploads to Netlify.
+
+## 2026-10-22 — Owner: per-field classification, both as map layers (definitions fixed BEFORE computing)
+Study-area map (My Fields), season 2025 field boundaries, two new layers:
+1 Productivity vs neighbours: per pixel and season, in-season sum of weekly green LAI divided by the median of that sum over
+  all pixels of the same crop group in the area that season (arable groups only); field value = mean over its non-headland
+  pixels and its arable seasons (>= 3). Classes per area: lowest / middle / highest third of fields = low / average / high.
+  Check (reported, no pass/fail): leave one season out - Spearman across fields between the mean of the other seasons and the
+  held-out season, per area and season.
+2 Within-field variability from Module A: uniform = zone spread < 5 %; variable, reliable zones = spread >= 5 % and zone order
+  held in >= 80 % of held-out seasons; variable, less stable zones = spread >= 5 % and held < 80 %; not assessed = no zones
+  (< 2 ha, < 3 arable seasons or partial).
+Job 6a (crop stage) design proposed to the owner; waiting for the answers on crops / stages and the rule.
+
+## 2026-10-22 — RESULT per-field classes (field_v2/zones/field_productivity_check.csv; docs/field/<area>_2025/classes.json)
+Productivity vs neighbours computed for 1,291 (pilot) / 703 (Selhausen) / 1,327 (north) / 776 (south) fields.
+Ranking check (reported, no pass/fail): Spearman across fields between a field's mean of 4 seasons and the held-out season:
+pilot 0.16-0.26, Selhausen 0.19-0.33, north 0.28-0.32, south 0.39-0.42 -> WEAK: a field's rank among its neighbours
+repeats only weakly from year to year (crop, sowing date, variety and management differ by field and year).
+Variability classes (from Module A): reliable zones 205-395 fields per area, uniform 85-233, less stable 70-105; the rest not
+assessed (< 2 ha, < 3 arable seasons, partial, grassland).
+- 2026-10-22: owner chose option A: 'Productivity vs neighbours' computed but NOT shown (weak year-to-year ranking, 0.16-0.42);
+  study-area map gets the 'Variability' view only: fields coloured by within-field variability class, crop filter (legend
+  counts the selected crop only), table 'by crop' (main crops x classes), class in the hover tip. JS tests 53/53; browser
+  check pilot 2025 (winter wheat: 65 uniform / 169 reliable / 33 less stable / 413 not assessed). sw APP_VERSION 2026-10-22a.
+  Note: the local preview server had stopped (app restart) and was restarted.
+
+## 2026-10-22 — Owner: per-field variability calculated directly from the pixels (replaces the zone-based field class)
+Definitions fixed BEFORE computing. Per field (2025 boundaries, >= 2 ha, not partial, non-headland pixels, >= 30 pixels) and
+arable season (>= 50 % of its pixels arable with a value): relative growth of each pixel = season sum / field mean (as Module A).
+Spread_season = standard deviation of the pixels' relative growth; field spread = median over seasons.
+Stability: for each season, Pearson correlation of its pixel map with the mean map of the other seasons; field stability =
+median. Needs >= 3 arable seasons. Classes: uniform = spread < 2.5 % (about a 5 % strong-weak zone gap for a normal pattern);
+variable, stable pattern = spread >= 2.5 % and stability >= 0.5; variable, less stable pattern = spread >= 2.5 % and
+stability < 0.5; else not assessed. Reported: class counts per area and crop, agreement with the zone-based classes.
+The zones inside each field (Zones & export) stay unchanged.
+- 2026-10-22 RESULT pixel-based field variability (field_classes_out2.txt): pixel spread median 5.6-7.3 % (p10 3.9-5.1 %),
+  stability median 0.46-0.52 -> almost no field is 'uniform' (pilot 1, north 4, Selhausen 0, south 0); 'stable' vs 'less
+  stable' split about half / half. Agreement with the zone-based class 50-62 %. Reading: single 10 m pixels carry random
+  measurement noise (retrieval, geolocation, mixed pixels), which raises the pixel spread above the 2.5 % cut even in fields
+  whose zones differ by < 5 %, and lowers the pixel-map correlation; the zone method averages hundreds of pixels per zone and
+  removes most of that noise. Not published; owner to decide (zone-based / pixel-based on 30 m blocks / keep pixel-based).
+- 2026-10-22: owner chose option A: the map uses the zone-based field classes again (var_class); pixel-based kept as var_pixel for the record. Map text explains zone-based classes.
+- 2026-10-22: committed c3fd207 (Sanju Sajimon); site folder rebuilt with backup; owner uploads to Netlify.
+- 2026-10-22: report section 9i extended: Zones & export redesign, per-field Variability map (classes, counts, Figure 9i-2), productivity and pixel-based variants tested and not shown (with numbers and reasons), USB data archive, Job 6a proposed design; working plan step 7 annotated.
+
+## 2026-10-22 — Job 6a (crop stage per field): design and rule fixed BEFORE any result (owner OK)
+Truth: DWD annual-reporter (Jahresmelder) observations 2021-2025, stations within 15 km of the pilot, Selhausen and south area
+centres (north: no active station). Stages: winter wheat and winter barley - stem extension (phase 15), heading (18), yellow
+ripeness (21); maize - beginning of flowering (5).
+Fields: crop group wheat / barley / maize (grain + silage), >= 0.5 ha, fully inside the area, in the station's season, centroid
+within 5 km of the station; an observation is used only if >= 3 such fields have a prediction.
+Field satellite timing (fix-2 weekly field-mean green LAI inside the season mask): green-up = first week above min + 50 % of
+the season amplitude; peak = week of the maximum; green-down = last week above min + 50 %. Mapping: stem extension <- green-up,
+heading <- peak, yellow ripeness <- green-down, maize flowering <- peak.
+Calendar: district crop-calendar prediction (phenology_predictions_<crop>.csv; maize = silage maize model) for the field's
+district and year. HR-VPP: field median of season-1 SOSD (stem extension), MAXD (heading, maize flowering), EOSD (yellow
+ripeness), QFLAG >= 2, >= 50 % of pixels; 2021-2024 only.
+Methods, all fitted on training seasons only, per crop and stage:
+  calendar = calendar date + k (k = mean training error);  HR-VPP = HR-VPP date + k;
+  ours = calendar + w x (satellite date - calendar date) + k, w chosen on a grid 0, 0.05 ... 1 by training RMSE (w = 0 is the
+  calendar, w = 1 the satellite date with a constant offset).
+  Prediction for an observation = median of the predictions of its nearby fields.
+Test: leave one season out over 2021-2024 (train 3 seasons, test the 4th); pooled RMSE in days over the held-out station-years
+that have all three predictions. PASS for a crop and stage if ours has a lower RMSE than BOTH the calendar and HR-VPP.
+Reported, no pass/fail: n, MAE, bias per crop and stage, chosen w; 2025 ours vs calendar (fitted on 2021-2024).
+- 2026-10-22 BUG found before any maize result: fields_district.csv (built for the cereal district model) lists only cereal
+  fields, so all maize fields were dropped ('no usable observations' for maize flowering, 44 observations available). Fix:
+  fields missing from that table get their centroid from their own pixels and the district of the nearest listed field
+  (districts are tens of km wide). Wheat / barley rows are unchanged (all listed) and are NOT re-run (their one look stands);
+  only maize flowering is run with the fix.
+
+## 2026-10-22 — RESULT Job 6a, cereals (one look; field_v2/crop_stage/crop_stage_results.csv)
+Leave one season out 2021-2024, 19-20 station-years per stage (pilot, Selhausen, south). RMSE in days, ours / calendar / HR-VPP:
+wheat stem extension 9.3 / 9.4 / 8.5; wheat heading 7.3 / 6.7 / 8.4; wheat yellow ripeness 8.9 / 8.7 / 8.4;
+barley stem extension 7.2 / 7.0 / 15.3; barley heading 4.5 / 4.5 / 7.8; barley yellow ripeness 4.6 / 4.3 / 6.5.
+-> FAIL for all six (ours never below both benchmarks). Learned satellite weights: wheat 0.0-0.85 (unstable between folds),
+barley 0.0-0.25 (mostly calendar). Reading: with 19-20 observations and one unknown observer field per station, the field
+satellite timing adds nothing measurable over the weather-driven district calendar for barley, and is unstable for wheat;
+HR-VPP is clearly worse for barley, close for wheat. 2025 (fitted on 2021-2024, 4-5 obs per stage): mixed (wheat heading
+6.9 vs calendar 10.0; wheat stem extension 5.9 vs 3.2) - too few to read.
+- RESULT Job 6a maize flowering (after the bug fix, first look): 16 station-years; RMSE ours 9.54 / calendar 9.54 / HR-VPP
+  10.31 days -> FAIL (ours not below the calendar; tie). Weights 0.05-0.55. Job 6a overall: 0 of 7 crop-stages pass.
+  The district calendar (weather-driven) stays the best stage estimate; per-field satellite timing does not improve it in
+  this test. Platform: no per-field stage shown as a tested product.
+
+## 2026-10-22 — WOFOST per field + Job 2 (LAI forecast): design and rule fixed BEFORE any result (owner OK)
+Methods (per field, wheat and barley, areas pilot / Selhausen / north / south, test seasons 2024 and 2025):
+  A persistence (last measured weekly value before the cut);  B our field crop model without satellite (prior ensemble);
+  C WOFOST per field (PCSE Wofost72_WLP_CWB) + the same satellite assimilation;  D ours = field crop model + assimilation
+  (variant B2 of 15 Oct: measured weeks only, dev_f 0.88-1.12, same weights).
+WOFOST setup: HYRAS 1 km daily weather of the field's cell (tas / tasmax / tasmin / hurs / pr) + SARAH-3 radiation and wind
+as in the district runner; BK50 soil per field (plant-available water, rooting depth); crop: Winter_wheat_102; winter barley
+= winter wheat with the barley development (TSUM) of our district calibration (disclosed; no winter barley in WOFOST).
+Ensemble: ~1,000 members per area x season x crop x soil class (plant-available water terciles), varying TSUM1 / TSUM2 (+-12 %),
+leaf growth (SLATB scale), sowing date (+-7 days around the observed district sowing) and soil water (+-20 %); each field
+weights the members of its class with its own measured weeks (identical likelihood and tempering as D).
+Test: cut dates 1 April, 1 May, 1 June; only satellite weeks before the cut; forecast green LAI at every later measured week
+of the field. Score RMSE and bias per cut. PASS per crop if D has a lower RMSE than A, B and C at >= 2 of 3 cuts AND
+|bias| of D at 1 June <= 0.3 LAI.
+Extra (reported, no pass/fail, no change to Job 6a): assimilated WOFOST per-field flowering (DVS 1) and maturity (DVS 2)
+vs DWD heading / yellow ripeness at the Job 6a stations, same seasons and LOSO offsets.
+Platform (owner OK): if D passes, the field's weekly chart shows the forecast (dashed) with an 80 % band.
+- 2026-10-22 AMENDMENT before any Job 2 result (owner decision: true per-field simulation, reusable for any new field):
+  WOFOST runs PER FIELD (the field's own HYRAS 1 km cell weather and its own BK50 soil), 200 members per field from a
+  Latin hypercube over the same four perturbations (TSUM1 / TSUM2 +-12 %, SLATB scale, sowing +-7 days, soil water +-20 %)
+  instead of ~1,000 shared members per area x soil class. Timing: 0.26 s per WOFOST season, 8 cores -> ~10 h for the 4,793
+  wheat / barley field-seasons (>= 0.5 ha) of 2024-2025. For symmetry, our field model D (and its prior B) also uses the
+  field's own HYRAS cell instead of the weather groups. Rule unchanged.
+- 2026-10-22 AMENDMENT 2 before any result (owner: quality over time): WOFOST 1,000 members PER FIELD (Latin hypercube),
+  ~49 h computing (2-3 nights; detached, resumable per field, keep-awake). Our model D / prior B keep the adopted 3,000
+  random members (as tested 15 Oct), per field with the field's own HYRAS cell. Rule unchanged.
+- 2026-10-22 AMENDMENT 3 before any result (owner): two EXTRA comparison lines in Job 2 (reported next to the rule's
+  methods; the pass rule stays D vs A, B, C):
+  E1 normal WOFOST: 1 run per field (calibrated TSUM, field weather / soil, observed district sowing), no satellite.
+  E2 WOFOST + Ensemble Kalman filter: 100 members per field (same four perturbations, Latin hypercube), sequential update
+     of the LAI state at each measured week before the cut (observation error = measured sd with the same 0.5 added in
+     quadrature as the particle weights; perturbed observations, standard stochastic EnKF), then free run to the targets;
+     one run per cut date.
+  Final line-up: E1 normal WOFOST (1) | E2 WOFOST + Kalman (100) | C WOFOST + particle weights (1,000) | D our model +
+  particle weights (3,000) | B our model without satellite | A persistence.
+- 2026-10-25 CLARIFICATIONS before any Job 2 result (implementation choices the design left open; no rule change):
+  * measured week = >= 50 % of the field's pixels measured that week (weekly field means after fix 2, share-weighted);
+    observations used = measured weeks inside the field's crop season before the cut, never December / January; targets =
+    measured season weeks from the cut on. Observation sd per week = 0, so the error is the 0.5 of the weights (same for C, D).
+  * D / B per field: phase4 members (3,000, seed per district + season), dev_f stretched to 0.88-1.12 (B2), cell weather
+    tmin / tmax / rain for development and growth, district light and ET0; soil prior = field BK50 plant-available water
+    / district median of the SAME crop (barley vs barley fields). Fields of one crop / district / cell share one run.
+    Barley uses the district v7 barley settings: no satellite LAI-shape fit exists for barley (wheat keeps its shape fit).
+  * B = D's members weighted by the soil prior only. C uses no soil prior (the field's soil is already in WOFOST).
+  * Reported next to the rule (no pass/fail): D 80 % band coverage, effective members, results per season.
+  * WOFOST speed check: stopping each member at maturity saves only ~5 % (identical results) -> run not restarted.
+  * The laptop slept twice (24 Oct 00:00-10:45; 24 Oct 21:45-25 Oct 09:33, after a power-source change); the run resumed,
+    no results affected. Keep-awake helper tools_keep_awake.py (prevents idle sleep only) running since 24 Oct.
+- 2026-10-25 AMENDMENT 4 before any Job 2 result (owner OK): EXTRA line E3 = OUR field model + ensemble Kalman filter,
+  100 members per field (phase4 draw, seed per field + season, dev_f 0.88-1.12 as D), own HYRAS cell, cap_f drawn from
+  the soil prior when the field's BK50 ratio is known (log-normal around the ratio, sd 0.15, as D's prior), otherwise
+  the uniform draw; green LAI updated on each measured week before the cut (stochastic EnKF, error 0.5 as E2; leaf area
+  only, the other model states unchanged), then free run; one run per cut. Reported next to E1 / E2; rule unchanged.
+  SCENARIO REPORT (reported for D against A, B, C, E1, E2, E3; no pass/fail; written down so no scenario can be picked
+  afterwards): crop x cut x season (2024, 2025 = fully clean season; D's dev_f range was chosen on pilot 2024 wheat) x
+  area (pilot, Selhausen = near the Rur tuning region; north, south = away from it) x soil (thirds of BK50 plant-available
+  water over the test fields of the crop) x spring rain (field cell rain 1 Mar - 30 Jun, below / above the median of the
+  crop's test fields per season) x field size (< 5 ha / >= 5 ha) x forecast distance (1-4 weeks / > 4 weeks after the cut).
+  A weak scenario is reported and examined; any fix is a NEW version, tested on season 2026, never re-tuned on 2024-2025.
+- 2026-10-25 AMENDMENT 5 before any Job 2 result (owner): second, stricter statement next to the rule —
+  CLAIM vs WOFOST per crop: D has a lower RMSE than C (WOFOST + particle), E1 (normal WOFOST) AND E2 (WOFOST + Kalman)
+  at >= 2 of 3 cuts, and |bias D at 1 June| <= 0.3. Only if it holds may the report say that our field model forecast
+  green LAI with a lower error than WOFOST in this test (NRW, 2024-2025, this setup). The pass rule (D vs A, B, C) is unchanged.
+- 2026-10-25 DISCLOSED EARLY LOOK (owner request, before C / E1 / E2 exist): scores of A, B and D (E3 when finished) on
+  2024-2025 shown to the owner. D, B, E3 and all rules are frozen; nothing may be changed after this look.
+- 2026-10-25 EARLY LOOK RESULT (disclosed; A, B, D, E3 only; C / E1 / E2 not yet run; field_v2/job2/early_look.txt):
+  wheat RMSE D 0.715 / 0.560 / 0.545 (cuts 04-01 / 05-01 / 06-01) vs A 1.394 / 1.530 / 2.100, B 1.545 / 1.423 / 1.178,
+  E3 0.847 / 0.602 / 0.540; bias D at 06-01 +0.068; D 80 % band holds 85 / 84 / 80 % of observed weeks.
+  barley RMSE D 1.022 / 0.968 / 0.639 vs A 1.453 / 2.150 / 2.774, B 0.935 / 0.955 / 0.794, E3 1.025 / 1.026 / 0.714;
+  bias D at 06-01 -0.546; D 80 % band holds only 17 / 11 / 25 %. => barley cannot pass the rule (B better than D at
+  2 of 3 cuts AND |bias| > 0.3), whatever C shows; wheat depends on C. Barley members are systematically too low
+  (no barley LAI-shape fit) — to be examined; any fix = new version tested on 2026. Nothing changed after this look.
+- 2026-10-26: third laptop sleep 25 Oct 23:06 - 26 Oct 09:29 (Application API; power-source change at wake); WOFOST resumed, no results affected. Report section 9k updated (method explanation, three statements, early look, improvement plan).
+- 2026-10-27: laptop slept 26 Oct 23:51 - 27 Oct 09:32; WOFOST restarted with 8 processes (owner request; 4 briefly for heat). No results affected.
+- 2026-10-27 DISCLOSED SECOND EARLY LOOK (owner request, before running): season 2024 only, now that WOFOST 2024 (C, E1) is
+  finished; E2 not yet run. Scores of A, B, C, D, E1, E3 on 2024 shown to the owner (field_v2/job2/look2024_*). No verdict
+  and no claim is drawn from it; the formal test stays 2024 + 2025 with all lines. All lines and rules stay frozen.
+- 2026-10-27 SECOND EARLY LOOK RESULT (disclosed; season 2024 only; E2 not run; field_v2/job2/look2024.txt): 1,623 wheat and
+  651 barley field-seasons. RMSE at cuts 04-01 / 05-01 / 06-01 -
+  wheat D 0.589 / 0.495 / 0.491, C 1.808 / 1.006 / 0.767, E1 1.844 / 1.753 / 1.460, B 0.878 / 0.750 / 0.597, A 1.368 / 1.438 / 1.947,
+  E3 0.633 / 0.496 / 0.491; bias D at 06-01 -0.221.
+  barley D 0.820 / 0.867 / 0.711, C 1.372 / 0.849 / 0.851, E1 1.468 / 1.226 / 0.991, B 0.806 / 0.795 / 0.771, E3 0.849 / 0.887 / 0.771;
+  bias D at 06-01 -0.641. No verdict drawn (one season, E2 missing). Nothing changed after this look.
+- 2026-11-03: Season timing (regional crop calendar per field, wheat / barley) committed 4c34f92 (Sanju Sajimon) on field-platform; calendar.json for 20 area-seasons (phase25_calendar.py); site folder D:/groundtruth-earth-site/crop-outlook rebuilt (2,975 files, 1.22 GB; backup D:/groundtruth-earth-site-backup-20261103-134344); owner uploads to Netlify. WOFOST stopped by owner (3,251 / 4,575 done).
+- 2026-11-03: field-platform pushed to GitHub and main fast-forwarded to it (cafe26d..4c34f92, owner request); PR #1 'Field platform' shows as merged; local main updated.
+- 2026-11-03: Crop Outlook design v2 (light ESA-style, Inter, one palette, stable per-crop map scale, map title, play / pause on all time sliders) committed 741edcf (Sanju Sajimon), pushed to field-platform and main; old design tagged design-v1 (pushed). Groundtruth site pages unchanged (owner decision: only the platform restyled; a full-site restyle was tried and reverted from D:/groundtruth-earth-site-backup-design-v1). Site folder D:/groundtruth-earth-site ready; owner uploads to Netlify.
+
+## 2026-11-03 - Weekly SL2P vs our weekly LAI (descriptive comparison, written before any result)
+- Owner request. Not a pass/fail test, no claim attached; nothing in the product is changed by the result.
+- Data: the same raw Sentinel-2 scenes, pixels, cloud mask, fix 1 and Dec/Jan rule as fv2.retrieval_s2, 4 areas x
+  seasons 2021-2025 (no download). SL2P = ESA SNAP v2_1 LAI network (phase4_sl2p.SL2P, verified on ESA test cases);
+  SL2P values outside ESA's definition domain are kept but counted; invalid outputs = NaN.
+- Weekly series on the same Mondays (Oct 1 - Aug 31): (a) SL2P, line only (measured within 3 d, else straight line
+  between clear images whatever the gap, after the last clear image the last value); (b) ours with exactly the same
+  line-only rule (fix 2 flags dropped as in production); (c) ours as published (weekly_pixels_V2: line <= 30 d, radar
+  > 30 d). The radar model was trained on our LAI, so it is not applied to SL2P; (a) vs (b) is the like-for-like pair.
+- Reported: per area-season and crop, weekly median and middle 50 % of pixels; pixel-level mean difference, RMSD and
+  r for (b - a) and (c - a), split by month and by the source of the weekly value (measured / gap-filled).
+- Code: 06_field/phase26_sl2p_weekly.py; results data/processed/field_v2/sl2p_weekly/.
+- 20:30 RESULT (looked at once; descriptive, no claim). 20 area-seasons, 880 clear dates, 393 M pixel-weeks. Clear pixels
+  inside SL2P's definition domain 63-76 %, SL2P invalid 0.2-1.5 %. Pooled, all crops (ours - SL2P): all weeks mean diff
+  -0.03, RMSD 0.59 (line-only pair 0.56), r 0.92 (sample); measured weeks -0.07 / 0.65; gap weeks line-only pair
+  -0.005 / 0.50, published -0.003 / 0.54; radar weeks +0.04 / 0.53. Wheat: all weeks -0.14 / 0.61, r 0.95; May -0.67 /
+  1.15, June -0.60 / 1.16, other months |diff| <= 0.14, RMSD 0.18-0.56. Same pattern as the 2021 Rur check: the two
+  agree except at the peak of dense cereal canopies, where SL2P is 1-1.5 LAI higher (saturation; each network's prior);
+  2024 (weak season) the peaks match. Maize / sugar beet: SL2P higher late in the season (Aug). Charts and tables:
+  data/processed/field_v2/sl2p_weekly/ (weekly_wheat_by_area.png, weekly_all_crops.png, scatter_weekly.png,
+  pooled_summary.csv). First run lost 3 area-seasons to MemoryError (4 large jobs at once) and to half-written cache
+  files from workers stopped by hand; cache now written atomically, failed jobs logged; rerun with 2 processes.
+
+## 2026-11-04 - Weekly canopy chlorophyll (CCC), leaf chlorophyll (Cab) and brown pigment (Cbrown) per field - PRE-REGISTRATION
+- Owner request: the field platform shows all four outputs of the PROSAIL network, not only green LAI.
+- Retrieval: the same network (prosail_net.pt, unchanged), raw scenes, pixels, cloud mask, fix 1 and Dec/Jan rule as
+  fv2.retrieval_s2, 4 areas x 2021-2025 (no download). Consistency check before anything else: the re-computed LAI must equal
+  s2_pixels_fv2 LAI (max abs difference < 1e-4) or the run stops. Fix 2 flags (bad clear images, found on LAI) are applied to
+  all three traits (same image defect).
+- Weekly rule (no radar model exists for these traits): measured = clear value within 3 days (uncertainty = network sd);
+  otherwise a straight line between clear values whatever the gap; after the last clear image the last value is held.
+- Typical error per gap class, measured once (descriptive, no adopt rule; the line is the only method): per area-season hide
+  30 % of the clear dates (seed 70, never the first / last), line between the kept neighbours (classes <= 15 d, 16-30 d, > 30 d)
+  and the held previous value (classes <= 30 d, > 30 d since the last kept value), pixel RMSE vs the hidden value, pooled over
+  the 20 area-seasons -> uncertainty_traits.json, used for every published gap value.
+- Platform (first step): weekly field series + chart and values in the field panel; per-pixel map overlays later (site size).
+- Code: 06_field/phase27_traits.py; tests tests/field/test_traits.py.
+- 13:22 RESULT (one look, descriptive). Retrieval 20/20 area-seasons; re-computed LAI identical to s2_pixels_fv2 (max diff 0).
+  Typical error of gap values (pixel RMSE vs hidden clear values, pooled; n 10.7-46.8 M per class):
+  Cab (ug/cm2) line <=15 d 5.5, 16-30 d 6.5, >30 d 8.6, held <=30 d 8.7, >30 d 12.8; CCC line 21.6 / 26.1 / 36.0, held 38.6 /
+  72.2; Cbrown line 0.11 / 0.13 / 0.18, held 0.18 / 0.26 -> uncertainty_traits.json. traits.json written for 20 area-seasons.
+- 2026-11-04 commit b7e9a1b (traits + SL2P weekly code, field panel / My fields charts), pushed to field-platform and main;
+  site folder D:\groundtruth-earth-site updated (JS, sw.js 2026-11-04a, field/index.json, 20 traits.json); owner uploads to Netlify.
+
+## 2026-11-04 - Field crop calendar for maize and potato (owner request)
+- phase25_calendar.py now covers every crop with a fitted district calendar: winter wheat, winter barley, silage maize
+  (Silomais*), grain maize (Mais (ohne ...)), potato (Kartoffeln). Maize / potato fields are not in fields_hyras_cell /
+  fields_district (built for wheat / barley): cell and district of the nearest wheat / barley field within 1.5 km.
+  Rebuilt 20 area-seasons: fields with a calendar wheat 9,378, silage maize 4,541, barley 3,653, potato 1,548; all on
+  their own 1 km weather. Grain maize: 0 fields (no district-year row in the grain maize model for these districts).
+  Spring cereals, spelt, durum, rapeseed, sugar beet: no fitted calendar. Wheat / barley curves unchanged (pilot 2022 checked).
+- Commit 8f17862 pushed; site folder updated (sw.js 2026-11-04b, 20 calendar.json, field/index.json).
+- 2026-11-04 grain maize calendar (silage maize district inputs; 207 fields), traits.json lazy, px.bin per-field blocks in
+  the service worker; commit 1a30658 pushed; site folder in sync (2026-11-04c).
+
+## 2026-11-04 - Field crop calendar vs satellite timing (owner doubt; descriptive check, after the calendars were published)
+- Median field green LAI per crop and area-season vs the calendar's stage dates (20 area-seasons):
+  potato: calendar 'canopy closed' 2-5 weeks before median LAI >= 2 (e.g. pilot 2023 27 May vs 3 Jul, north 2024 14 May vs
+  15 Jul); the calendar reproduces the DWD observer dates it was fitted to (Dueren 2022 obs 22 May, calendar 20 May), which run
+  early for these main-crop fields; no DWD potato flowering observations in these districts recently -> potato calendar REMOVED.
+  wheat: LAI peak - calendar heading median +4 d (-6..+18), half-rise - stem extension -7 d -> consistent (green LAI peaks
+  around heading / flowering). barley: peak - heading +14 d (-14..+23), half-rise - stem extension -4 d -> plausible, heading
+  possibly ~1-2 weeks early. silage maize: peak - flowering +19 d (-10..+37), grain maize +8 d (-10..+32); emergence ->
+  half-rise 50 d -> maize calendar ~1-3 weeks ahead of many fields (late sowing after grass is common for silage maize).
+- Owner also flagged chlorophyll in long winter gaps (straight line over Dec/Jan while radar LAI drops): fix pending owner choice.
+- Owner decision: calendar for winter wheat and winter barley only (maize removed too), labelled with the satellite check;
+  commit 4053d04 pushed; site folder in sync (2026-11-04d).
+
+## 2026-11-04 - Chlorophyll in gap weeks, fix A (owner choice) - PRE-REGISTRATION (before any result)
+- Problem (owner): CCC / Cab / Cbrown used a straight line over long gaps (Dec/Jan always) while the published LAI follows the
+  radar, so CCC could stay ~35 with LAI 0.3 (impossible: CCC = LAI x Cab); Cab on near-bare soil is mostly soil signal.
+- New weekly rule (phase27_traits.py): measured weeks unchanged (network values, network sd). Gap weeks:
+  CCC = published weekly LAI (line <= 30 d, radar > 30 d, live after the last image) x line-filled Cab; its source label is the
+  LAI source. Cab and Cbrown: no value in gaps > 30 d (line) or > 30 d after the last image; Cab also no value when the weekly
+  LAI < 0.5.
+- CCC gap error, measured once by hidden dates (same seed-70 dates as the area test, whose files give the LAI fill of every
+  hidden pixel-date: line if the gap <= 30 d, re-analysis otherwise): CCC_hat = LAI fill x Cab line (kept neighbours), truth =
+  the network CCC of the hidden clear pixel; pixel RMSE pooled over 20 area-seasons per gap class (<= 15, 16-30, > 30 d),
+  reported next to the old straight-line CCC error (21.6 / 26.1 / 36.0). After the last image (not covered by the test):
+  propagated error sqrt((Cab x u_LAI)^2 + (LAI x u_Cab)^2) per pixel-week. Descriptive; no adopt rule (owner chose A).
+- 18:22 RESULT fix A (one look): CCC gap error, pixel RMSE on hidden clear dates (n 13-21 M per class), fix A vs old straight
+  line: <= 15 d 22.7 vs 21.9; 16-30 d 26.9 vs 26.1; > 30 d 32.6 vs 36.1. Reading: in short gaps (LAI also a line there) the
+  product is ~3 % worse, within noise; in long gaps (radar LAI) 10 % better, and CCC no longer contradicts the weekly LAI.
+  Kept as the owner chose (no adopt rule). ccc_unc_fixA.json used for gap-week CCC errors; 20 traits.json re-exported.
+- commit b408b21 (fix A) pushed; site folder in sync (2026-11-04e).
+
+## 2026-11-04 - Owner decision: crop-specific PROSAIL networks later, platform note now
+- The current product stays: one network trained on cereal canopies for every crop. Platform states it (field panel for maize,
+  sugar beet, potato, rapeseed; Accuracy Limits; Method). Later: crop-specific networks built in parallel (own folder, cereal
+  values identical by a hard check), compared per crop (synthetic canopies of the crop, SL2P, LAI 300 m, peak-LAI plausibility;
+  rule to be pre-registered), adopted per crop only if better. Commit 9be2dc1, site in sync (2026-11-04f).
+
+## 2026-11-05 - External review of the platform (owner shared it): 6 points and plan
+- Points: (1) data latency - hindcasts use near-final HYRAS / SARAH-3 / DWD phenology up to each date, MARS used real-time data;
+  the 2026 'frozen in-season' forecasts were also built in Oct 2026 (pseudo-real-time); (2) '15 of 22' vs MARS: 8 seasons,
+  correlated cells, no significance test; (3) MARS forecasts Eurostat yields, we score against Destatis (moisture / definitions);
+  (4) OCR of MARS tables: automatic checks only, no documented manual spot-check; (5) MODIS ends (Terra data end June 2025);
+  (6) too optimistic in hot, dry summers.
+- Owner order: 1 wording (done today), 2 OCR spot-check + bootstrap / Diebold-Mariano vs MARS, 3 reference yields, 4 VIIRS for
+  MODIS before 2027, 5 real-time pipeline with frozen timestamped forecasts from spring 2027, 6 drought improvement.
+- Step 1 done: crop-outlook-germany.html (data 'up to that date in near-final versions'; hindcast note; MARS 'lower error in
+  15 of 22 ... indication rather than proof; statistical test in preparation'), investigations.html, README, model card
+  (commit 7aabc64). Backups of the two site pages in the session scratchpad.
+
+## 2026-11-05 - Step 2 of the review plan: OCR spot-check + significance of the MARS comparison - PRE-REGISTRATION
+(a) OCR spot-check. Population: MARS values read by OCR (mars_germany_ocr.csv, mars_germany_ocr_old.csv) that enter the
+    national 2018-2025 comparison (benchmark_pairs.csv, ours_v10_blend, mars_05..mars_10, region DE). Draw 20 at random
+    (numpy seed 2026; if fewer than 20, all). Each value is read by eye from the stored page image (data/raw/mars/ocr/img) by
+    Claude and listed for the owner to confirm. Result: 'k of 20 correct'. Any wrong value -> corrected, all OCR values of that
+    bulletin re-read, the comparison recomputed, and the change logged.
+(b) Significance. Same 22 national cells as the site (crop x MARS month, ours_v10_blend, 'pub' dating). Statistic per cell:
+    RMSE(ours) - RMSE(MARS) in % of the mean official yield (as on the site). 95 % interval by bootstrap over SEASONS (10,000
+    resamples, seed 2026; all bulletins of a resampled season kept together). Cell verdict: 'lower error' if the whole
+    interval < 0, 'higher error' if > 0, else 'tie'. Correlation across cells: also per crop, all its months pooled, seasons
+    resampled as blocks (so months of one season move together), and the Diebold-Mariano test per crop on the per-season mean
+    squared-error difference (HLN small-sample correction, t with n-1 df; two-sided p). The site's '15 of 22' wording is replaced
+    by these verdicts. One look; nothing in the model changes.
+- RESULT (a) OCR spot-check: 76 of the 142 national 2018-2025 comparison values come from OCR; random 20 (seed 2026) read
+  by eye from the page images (Germany row of the bulletin table): 20 of 20 match (crop crops in review_step2/, montages
+  in the session scratchpad). The table header (crop name) was visible for 9; the other 11 rest on the pipeline's crop identity
+  check (printed 5-year average within 12 % of the official one). No correction needed.
+- RESULT (b) significance, 22 national cells, RMSE(ours) - RMSE(MARS) in % of mean yield, 95 % bootstrap over seasons:
+  lower error 3 (wheat June -3.1 [-5.9, -0.3]; grain maize Sept -11.7 [-24.2, -0.3], Oct -12.6 [-25.3, -0.1], only 4 seasons
+  2018-2021); higher error 2 (grain maize July +2.7 [1.5, 6.2]; barley Aug +1.8 [1.0, 2.9]); tie 17. Per crop (months pooled,
+  seasons as blocks): all ties; Diebold-Mariano (HLN) p: wheat 0.29, potato 0.46, barley 0.45, grain maize 0.49, silage 0.60.
+  Reading: '15 of 22' overstated; with 4-8 seasons most differences are not distinguishable from chance; the robust finding is
+  wheat in June. Bootstrap with 4 seasons (grain maize) is fragile. Files: data/processed/benchmarks/review_step2/.
+- Platform Accuracy page: MARS table shows better / level / worse with the 95 % interval and a hindcast note; article,
+  investigations teaser, README, model card reworded to the tested verdicts (commits d1188ee, 6be0bc2); site in sync (2026-11-05a).
+
+## 2026-11-05 - Step 3 of the review plan: reference yields (Eurostat vs Destatis) - PRE-REGISTRATION
+- Question: MARS forecasts the Eurostat yield; we score MARS (and us) against Destatis. If the two references differ
+  systematically (definitions, moisture standard, revisions), MARS gets an error that is not its own.
+- Data: Eurostat apro_cpsh1 (crop production in EU standard humidity) and apro_cpnh1 (national humidity), Germany,
+  2013-2025, soft wheat, winter barley (or barley), grain maize, green maize, potatoes; yield (and area / production).
+  Download only after the owner's OK (file, source, size stated).
+- Measure per crop and year: Eurostat - Destatis (t/ha and %), for both humidity versions; mean and range over 2018-2025.
+- Rule (decided now): if the mean |difference| for a crop is <= 1 %, the reference choice does not matter and the step-2
+  verdicts stand. If > 1 %, MARS is re-scored against the Eurostat yield (and us against Destatis as before, plus a variant
+  with both against Eurostat), the step-2 bootstrap repeated, and the site updated if any verdict changes. One look.
+- 2026-11-05 Eurostat download (owner OK): apro_cpsh1_DE.json 100,857 B, apro_cpnh1_DE.json 99,824 B (Eurostat dissemination API,
+  geo=DE, 2013+), data/raw/eurostat/. Larger than the 10-50 KB estimate (all crops of Germany; filtered afterwards).
+- RESULT (one look): Eurostat = Destatis to the second decimal for winter wheat (C1111), winter barley (C1310), grain maize
+  (C1500, 2018-2022; Eurostat also has 2023-2025) and potatoes (R1000), 2018-2025, both humidity tables; moisture standard
+  14 % for cereals in both. Silage maize (G3000) identical 2013-2024 (65 % humidity), but 2025 Eurostat 15.60 t/ha at 0 %
+  humidity = 0.35 x Destatis 44.58: Eurostat switched 2025 green maize to DRY MATTER. MARS 2025 forecasts (42.0-43.1) are fresh
+  weight, so Destatis (fresh) is the right reference for MARS too.
+- Rule outcome: mean |diff| <= 1 % for wheat, barley, grain maize, potato -> verdicts stand. Silage maize 8.1 % by the rule's
+  arithmetic, entirely from the 2025 unit change; DISCLOSED DEVIATION: not re-scored against Eurostat, because scoring fresh-weight
+  forecasts against a dry-matter yield would be wrong (the rule did not foresee a unit change). Step-2 verdicts unchanged.
+- Note for the future: any Eurostat green maize from 2025 on is dry matter (x ~2.86 to fresh at 35 % DM).
+  Table: data/processed/benchmarks/review_step2/step3_reference_yields.csv.
+
+## 2026-11-05 - Step 4 of the review plan: MODIS Aqua as the Terra successor (owner choice A; VIIRS later) - PRE-REGISTRATION
+- Why: Terra composites end 2025-06-26; v9 uses Terra cropland NDVI features. Planetary Computer has Aqua MYD13Q1 v061 to
+  2026-10-08 (gap 2025-07 to 2025-11). Same product, grid, cropland mask, districts and code (phase0_modis_districts.py with
+  sensor MYD13Q1) -> data/processed/modis/modis_aqua_ndvi_<year>.npz, 2003-2026. Streaming only; no account.
+- Calibration (district x composite, Feb-Oct, both sensors present on the same 16-day start date +- 8 days): linear
+  Terra ~ a + b x Aqua per month (or one line if months do not differ), fitted on 2003-2017, checked on 2018-2024.
+  PASS if on 2018-2024 the calibrated Aqua vs Terra district NDVI has RMSE <= 0.02 AND r >= 0.95. Fail -> Aqua not used.
+- Model check (only if PASS): v9 forward test (fit <= 2008, predict 2009-2017) with features from calibrated Aqua in place
+  of Terra; PASS if the blend RMSE is within +2 % of the Terra-feature run for every crop. One look each.
+- Use: frozen 2026 forecasts stay untouched; from 2027 the real-time pipeline uses calibrated Aqua (VIIRS when Aqua ends).
+- Calibration detail fixed before any Aqua data are looked at: pairing = nearest Aqua composite of the same district within
+  8 days of each Terra composite; form (one line vs per month) chosen by leave-one-year-out RMSE within 2003-2017 only.
+  Code 01_data/phase0_modis_aqua_calib.py, tests tests/field/test_aqua_calib.py.
+
+## 2026-11-05 - Owner: order of the next work
+1. Review step 4 (MODIS Aqua, running) - finish calibration check, forward test, commit.
+2. Job 3 - field water use / soil water: our field model's water use vs flux towers (TR32 have; ICOS Selhausen DE-RuS to
+   request / download with owner OK), FAO-56 and WOFOST; design and rule written down before any result. If it passes, the
+   platform shows simulated field soil water / water supply, labelled as simulated (BK50 soil, 1 km weather).
+3. Then review steps 5 (real-time pipeline for 2027) and 6 (drought), the Job 2 WOFOST completion (stopped 3 Nov, 1,224 of
+   2025 left), crop-specific PROSAIL networks for maize / beet / potato / rapeseed (later, cereals unchanged).
+- 2026-11-05 ~15:45 Aqua stream complete: 24 years 2003-2026 (17-18 composites per year; 2025: 10, Feb-Jun; 2026: 17), 100 %
+  of districts; data/processed/modis/modis_aqua_ndvi_<year>.npz.
+- RESULT calibration (one look; aqua_calibration.json): form per month (LOYO 0.044 vs one line 0.049). Check 2018-2024,
+  49,779 district-composite pairs: raw Aqua vs Terra RMSE 0.046, r 0.902; calibrated RMSE 0.043, bias -0.004, r 0.908.
+  Rule RMSE <= 0.02 and r >= 0.95 -> FAIL. By the rule, Aqua is not used; no calibrated files written, no forward test.
+- Diagnosis AFTER the fail (disclosed, no rule): Terra vs its own next composite 16 days later: RMSE 0.061, r 0.83 (NDVI moves
+  fast within a season). Aqua vs Terra interpolated to Aqua's own date (mean of the Terra composites 8 days either side):
+  RMSE 0.032, r 0.953. Mar-Jul window mean per district-year (the level the model features use): RMSE 0.016, r 0.949.
+  Reading: most of the composite-level mismatch is the 8-day offset of the two sensors' composites, which the chosen pairing
+  (nearest within +-8 days) built into the test. Owner decides whether a new, separately pre-registered test at feature level
+  (and the forward test) is run; the failed result stands as recorded.
+
+## 2026-11-05 - Job 3: field water use (evapotranspiration) vs flux towers - PRE-REGISTRATION (before any result)
+- Known from 13 Oct (check 2): the yield-fitted water balance is ~23 % below TR32 eddy covariance (5 wheat site-years,
+  daily r 0.76); a reporting factor k = 1.301 was adopted (leave one site-year out). Job 3 tests the field water use as the
+  platform would show it, against an independent standard method.
+- Truth: eddy-covariance daily ET = sum of half-hourly LE (best quality flags) / 2.45 MJ/kg on days with >= 44 of 48 valid
+  half-hours, 1 April to harvest. Sites: TR32 (5 wheat site-years, have) and ICOS DE-RuS Selhausen (ETC L2 fluxes interim,
+  2019 - Aug 2026, 16.5 MB, CC BY 4.0; download only after the owner's OK); a DE-RuS season counts if its crop is winter
+  wheat or winter barley (the crops our field model covers) and the field is identified in the NRW register.
+- Methods (same daily weather of the site's 1 km HYRAS cell, district light / ET0):
+  M1 ours: the field water balance (own cell weather, BK50 soil), actual ET x 1.301 (as shown); for 2021+ seasons the
+     satellite-weighted versions (Job 2 line D posterior, measured weeks), else the prior median;
+  M2 FAO-56 single crop coefficient: ET0 x Kc (FAO table values for the crop, stage lengths from our crop calendar) x Ks
+     (water-stress factor from a root-zone bucket with BK50 plant-available water, p = 0.55);
+  M3 normal WOFOST (one run, water-limited, standard settings + our development calibration) where it can be run for the
+     site-year (extra comparison, no rule).
+- Scores per site-year and pooled: daily RMSE (mm/day), daily r, ratio of season totals (method / EC). EC under-measures
+  ET by ~10-20 % (energy-balance closure); reported, not corrected.
+- Rule: Job 3 PASSES if, pooled over all valid site-years, M1 has a daily RMSE <= M2 AND |season ratio - 1| <= that of M2
+  AND daily r >= 0.6. Pass -> the platform shows field soil water / water supply, labelled simulated; fail -> field water
+  stays as now (district-level, labelled), and the gap is examined. One look. Code 06_field/phase28_water_job3.py.
+- Amendment (before any Job 3 result): (a) TR32: the factor k = 1.301 was fitted on these same 5 site-years, so on TR32 M1
+  uses the leave-one-site-year-out k (from the other site-years), as in the 13 Oct test; on ICOS DE-RuS, k = 1.301.
+  TR32 seasons (2009-2017) predate the 1 km HYRAS field weather and the 10 m series: M1 there = district weather, prior
+  median version (as check 2); M2 uses the same weather, ET0 and soil. (b) FAO-56 details: Kc_ini 0.4 until 1 March
+  (winter regrowth), linear to Kc_mid 1.15 at the calendar's heading, Kc_mid until half of grain filling, linear to Kc_end
+  (wheat 0.3, barley 0.25) at the calendar's maturity, Kc_end after; root depth linear 0.3 m at emergence to 1.3 m at
+  heading (as our model's default rooting depth); TAW from the same soil layers as M1 within the root depth; p = 0.55;
+  Ks = TAW - Dr over (1 - p) TAW when Dr > p TAW; bucket starts full on 1 March. (c) Daily 'valid day' as check 2.
+- DE-RuS field identified (ICOS station footprint centroid 50.866104 N, 6.446836 E -> UTM 320342 / 5638041): inside the
+  Selhausen study area; NRW register field of 9.79 ha (station: 9.7 ha): 2021 sugar beet (5367327), 2022 potato (6268159),
+  2023 winter wheat (7182626), 2024 sugar beet (7561227), 2025 winter wheat (8398633), 2026 cabbage. -> ICOS adds 2 wheat
+  site-years in the field-model era (2023, 2025). Code and tests for Job 3 ready (06_field/phase28_water_job3.py,
+  tests/field/test_water_job3.py, 3 pass). TR32 part NOT run yet: the rule is pooled over TR32 + ICOS, so all site-years are
+  scored in one look once the ICOS file is in (owner accepts the ICOS licence in the browser).
+- Amendment (after looking only at ICOS data COVERAGE, before any comparison): the ICOS L2 FLUXES file is quality-filtered
+  without gap-filling (2023: 5, 2025: 3 days with >= 44 of 48 valid half-hours), so for ICOS the truth is the gap-filled
+  FLUXNET-format LE (LE_F_MDS, ICOSETC_DE-RuS_FLUXNET_FLUXMET_HH_2019-2026_v1.3_r1.zip, 67 MB, CC BY 4.0, owner downloaded
+  after accepting the licence): daily ET = sum of LE_F_MDS x 1800 s / 2.45 MJ/kg on days where >= 80 % of the half-hours are
+  measured or good-quality filled (LE_F_MDS_QC <= 1). TR32 keeps the original rule. ICOS scope stays 2019-2026 (wheat 2023,
+  2025); the earlier DE-RuS wheat years (2012-13, 2017-18) are NOT added.
+- Amendment (before any result): ICOS seasons have no recorded harvest date; the window ends at the last week of the
+  field's satellite crop season (season mask: last week with field green LAI > 0.5), same for every method. ICOS M1 = the
+  field ensemble (3,000 versions, own 1 km cell, BK50 soil prior) weighted by ALL measured weeks of the season (Oct-Aug,
+  no December / January; re-analysis, no cut date), daily actual ET = weighted mean x 1.301. M2 on the same cell rain,
+  district ET0, the cell's calendar stages and TAW = district layers x the field's BK50 ratio.
+- RESULT Job 3 (one look; field_v2/water_job3/job3_scores.csv, job3_daily.csv). 7 site-years, 365 matched days (TR32 5
+  site-years, leave-one-out k 1.27-1.34; ICOS DE-RuS 2023 / 2025 wheat, ESS 139 / 106, 11 / 17 measured weeks).
+  Pooled: M1 ours daily RMSE 1.51 mm, r 0.77, season ratio 0.99; M2 FAO-56 RMSE 1.04, r 0.79, ratio 0.90.
+  Rule (M1 RMSE <= M2 AND |ratio-1| <= M2's AND r >= 0.6): RMSE condition not met -> FAIL. Ours gets the season totals
+  closer (0.99 vs 0.90) but its day-to-day ET is noisier than FAO-56. Consequence (pre-registered): field water stays as
+  now (district level, labelled); the gap is examined before any new version (new rule, new data).
+
+## 2026-11-05 - PLAN: field water v2 (owner request; plan only, no result; each test gets its own rule before it runs)
+Why: Job 3 failed (field model daily RMSE 1.51 vs FAO-56 1.04 mm/day; spring too high, July-August near zero because
+water use stops at maturity; the x1.30 factor fixes the total for the wrong reason). Goal: field water use and soil water
+good enough to support irrigation information first and, only after a trial season, advice.
+Design (FAO-56 dual crop coefficient, field-specific inputs):
+- ET = (Ks x Kcb + Ke) x ET0, daily, per field.
+- Kcb (plant) from the field's own weekly satellite green LAI (10 m, measured / line / radar weeks, with their uncertainty):
+  Kcb = Kcb_min + (Kcb_full - Kcb_min) x (1 - exp(-0.84 x LAI)) (published FAO-56 / remote-sensing form; constants from
+  the FAO crop tables, NOT fitted on the tower data used to test it). Variant without satellite: FAO table Kcb on the
+  crop-calendar stages.
+- Ke (soil evaporation after rain / irrigation): FAO-56 two-stage surface layer (TEW / REW from the soil texture), every
+  day incl. before emergence and after maturity.
+- Ks: root-zone bucket per field: TAW from BK50 plant-available water and rooting depth (finer maps where open, to check:
+  BK5 / Bodenschaetzung), p by crop (FAO table); root depth growth from the calendar.
+- ET0 per 1 km cell: FAO Penman-Monteith from HYRAS 1 km temperature / humidity, SARAH-3 radiation, wind from DWD stations
+  (or ERA5); compared once with the district ET0.
+- Rain: the field's 1 km HYRAS cell (real-time later: RADOLAN / stations, review step 5); irrigation from farmer records
+  (Module C) when available.
+- No blanket correction factor.
+Crops: winter wheat, winter barley, maize, potato, sugar beet (FAO crop tables + satellite LAI do not need our crop model).
+Tests (rules written before each runs; data never used to build the method):
+- T1 flux towers, NEW site-years only: DE-RuS wheat 2012-13, 2017-18 (held back from Job 3), DE-RuS potato 2022 and sugar
+  beet 2021 / 2024 (FAO-56 side), other ICOS crop stations if available (e.g. DE-Geb), ICOS 2026 when complete. Compare
+  v2 (satellite Kcb), v2 table variant, plain FAO-56 single Kc and the Job 3 field model; daily RMSE, r, season ratio.
+  The DE-RuS years before 2021 lack the 10 m series -> satellite variant only where Sentinel-2 exists (2017+).
+- T2 soil water: root-zone soil moisture vs measured soil moisture (TERENO / ICOS soil sensors at DE-RuS / Selhausen,
+  farmer sensors later); timing of 'water-limited' days.
+- T3 trial season 2027: information shown live; advice only after T1 + T2 pass and a season of farm checks.
+Outputs if passed: per field and week: water use (mm), root-zone water (% of available), days to stress at forecast
+weather, labelled 'simulated'; advice wording only after T3. Nitrogen (Job 5) follows the same rule: Duengeverordnung
+calculation first, satellite CCC only for status / distribution, validated against plant N and strip trials.
+Order: after review step 4 decision (Aqua) and the items already listed; data downloads asked for first.
+
+## 2026-11-05 - Field water v2: BUILD SPEC + tests T1 / T2 - PRE-REGISTRATION (before any v2 result)
+Method (FAO-56 dual crop coefficient, Allen et al. 1998, ch. 7; constants from the FAO tables, nothing fitted on test data):
+- ET0 per field: FAO Penman-Monteith (daily, eq. 6) from the field's HYRAS 1 km cell (tasmin, tasmax, hurs), SARAH-3 daily
+  SIS of the 0.05 deg cell (Rur box), wind = DWD station daily mean at 10 m (nearest station with data, converted to 2 m,
+  eq. 47), elevation from the cell; checked once against the district ET0 (reported).
+- Kcb from the field's weekly satellite green LAI (interpolated daily): Kcb = Kcb_min + (Kcb_mid - Kcb_min) x
+  (1 - exp(-0.7 x LAI)) with Kcb_min 0.15 and Kcb_mid from FAO Table 17 (wheat / barley 1.10, maize 1.15, potato 1.10,
+  sugar beet 1.15). Variant 'table': FAO Table 17 Kcb curve on the crop-calendar stages (wheat / barley), FAO stage
+  lengths for other crops from the satellite season (start / peak / end of the field's LAI).
+- Ke (FAO-56 eq. 71-77): surface layer Ze 0.10 m, TEW / REW from the top soil layer's field capacity / wilting point
+  (REW 9 mm), Kc_max = 1.20, few = 1 - fc with fc = 1 - exp(-0.5 x LAI); every day of the year.
+- Ks: root-zone bucket (eq. 84-86): TAW from the soil layers within the root depth (BK50 ratio as M1), p from FAO Table 22
+  (wheat 0.55, barley 0.55, maize 0.55, potato 0.35, sugar beet 0.55); root depth 0.1 m at season start to the FAO maximum
+  (wheat / barley 1.5 m, maize 1.0, potato 0.5, beet 0.9) at full cover (LAI peak); rain = HYRAS cell, no irrigation
+  records (DE-RuS is rainfed). No correction factor.
+T1 (flux tower, site-years NOT used in Job 3): ICOS DE-RuS sugar beet 2021, potato 2022, sugar beet 2024 (gap-filled
+  LE_F_MDS, valid day >= 80 % good, 1 April to the end of the field's satellite season). Methods: v2-sat, v2-table,
+  plain FAO-56 single Kc (Job 3 M2 form with the crop's FAO Kc). PASS if pooled v2-sat has daily RMSE <= plain FAO-56 AND
+  daily r >= 0.7 AND season ratio within 0.85-1.15. (The Job 3 wheat years are reported as supporting, not judged.)
+T2 (soil water): DE-RuS measured soil water content SWC_F_MDS_1..5 (daily means, QC <= 1), 2021-2025 seasons. The model's
+  root-zone relative storage (1 - Dr / TAW) vs the depth-mean measured SWC, both as daily anomalies within each season;
+  PASS if pooled r >= 0.7 AND the dates the model calls 'water-limited' (Ks < 1) fall in the driest measured third of
+  each season in >= 70 % of cases. Both T1 and T2 must pass before field water v2 replaces anything on the platform.
+One look each. Code 06_field/phase29_water_v2.py, tests tests/field/test_water_v2.py.
+- Before the T1 / T2 look (disclosed): site elevation fixed at 104 m (DE-RuS) instead of read from the cell (effect on
+  ET0 < 1 %); spring-crop seasons end with the weekly series (31 Aug), so beet seasons are cut at the end of August.
+- RESULT T1 (one look; water_v2/t1_scores.csv). Judged: DE-RuS sugar beet 2021, potato 2022, sugar beet 2024, 451 days.
+  Pooled v2-sat RMSE 1.063, r 0.693, ratio 1.08; v2-table 1.056 / 0.670 / 1.05; plain FAO-56 single 1.066 / 0.695 / 0.81.
+  Rule (v2-sat RMSE <= single AND r >= 0.7 AND ratio 0.85-1.15): r 0.693 < 0.7 -> FAIL (RMSE and ratio conditions met).
+  Per year: beet 2021 sat r 0.86 ratio 1.20; potato 2022 all methods r 0.45-0.52, ratio ~0.69; beet 2024 sat r 0.94 but
+  ratio 1.35 (single 0.96). Supporting wheat 2023 / 2025: all methods ratio 1.20-1.32 (single best RMSE).
+- RESULT T2 (one look; water_v2/t2_scores.csv). Pooled anomaly r 0.637 (per year 0.36 / 0.65 / 0.96 / 0.91 / 0.41);
+  314 model water-limited days, 46 % in the driest measured third. Rule (r >= 0.7 AND >= 70 %) -> FAIL. Potato 2022:
+  model water-limited on 148 of 151 days (p 0.35, 0.5 m roots).
+- Consequence: field water v2 does not replace anything; platform unchanged.
+- Diagnosis after the result (disclosed): topsoil wetting jumps (> 2 %% vol.) on days without tower rain occur in 2021 (3),
+  2022 (6) and 2024 (5) -> no clear irrigation signature for potato 2022 (May-Aug rain only 118 mm; all methods ~31 %% low).
+  Management records (irrigation, sowing, harvest) are in the ICOS ARCHIVE product (141 MB) - would settle it; not downloaded.
+
+## 2026-11-05 - Owner requirement + water v3 PLAN / PRE-REGISTRATION (before any v3 result)
+Owner requirement: per field, every week: crop water need, soil water, irrigation need, corrected weekly by satellite
+assimilation, with a forecast of the coming weeks; advice only when reliable ('no compromise').
+Design v3 = v2 (FAO-56 dual Kc, field ET0, Kcb from the field's weekly satellite LAI) + ensemble + weekly assimilation:
+- 2,000 versions per field-season (Latin hypercube): TAW x 0.5-1.5, max root depth x 0.6-1.4, Kcb_mid x 0.8-1.2, start
+  depletion 0-50 % of TAW on 1 March, TEW x 0.7-1.3.
+- Satellite LAI: drives each version's Kcb every day (as v2).
+- Sentinel-1 radar (field-mean VV, both orbits, as the weekly series): change-detection wetness index per field and orbit,
+  W = (VV - VV_dry) / (VV_wet - VV_dry) with VV_dry / VV_wet = 5th / 95th percentile of the field's own VV over the season
+  (no tower or sensor data used to set it); compared with each version's surface wetness 1 - De / TEW on radar dates with
+  field LAI < 2; Gaussian likelihood (error 0.25), tempering to >= 50 effective versions, cumulative over dates up to 'now'.
+- Forecast: from cut dates 1 May, 1 June, 1 July the weighted versions run forward with the observed weather (perfect
+  weather forecast: tests the water model and the assimilation, not the weather forecast); 80 % band from the weights.
+Tests (one look; DE-RuS 2021-2025, the only site with tower ET and soil sensors; these years were seen in Job 3 / v2, so
+a pass is INDICATIVE only - proof needs new data: DE-RuS 2026+, other ICOS / TERENO sites, farmer sensors):
+- F1 ET: weekly ET sums in the 4 weeks after each cut vs the tower (gap-filled, valid days); v3 vs v2 (unweighted
+  ensemble median) vs plain FAO-56. F2 soil water: daily root-zone relative storage anomaly vs measured SWC depth mean in
+  the 4 weeks after each cut. PASS if v3 has lower RMSE than v2 AND plain FAO-56 for F1 at >= 2 of 3 cuts AND pooled F2
+  anomaly r >= 0.7 AND the 80 % band holds the tower weekly ET in >= 70 % of weeks.
+- Potato 2022: if the ICOS management records (ARCHIVE product, 141 MB, owner download) show irrigation, the season is
+  run with the recorded irrigation added to rain (or left out if amounts are not recorded); decided before the look.
+Code: 06_field/phase30_water_v3.py; tests first. Platform: nothing changes before a pass; advice only after new-data proof
+and the 2027 trial season.
+
+## 2026-11-05 - Water v3: rulings + prep diagnostic (BEFORE the look; no tower / soil-sensor data used)
+Rulings on details the pre-registration left open (fixed now, before any score):
+- LAI after the cut: the observed weekly satellite LAI (like the weather: 'perfect' inputs). Same for v2 and plain FAO-56
+  (its stages come from the same satellite season), so the comparison stays fair; real-time use needs the LAI forecast.
+- Kcb_mid x factor: Kcb = 0.15 + (Kcb_mid x f - 0.15)(1 - exp(-0.7 LAI)) per version (not the whole curve scaled).
+- Root depth x factor: TAW per version from the BK50 layers to the version's depth, then x TAW factor.
+- Radar season for the 5th / 95th percentiles: radar dates 1 March - 30 September of the year, per orbit. Field-mean
+  VV exactly as the weekly series (Quegan filter, 3-date rolling mean).
+- Forecast: versions are deterministic with observed weather, so 'run forward' = the season run of each version with
+  the cut-date weights. v3 = weighted median, 80 % band = weighted 10th-90th percentile; v2 = unweighted median.
+- F1 week: tower-valid days only, >= 5 of 7 valid days, model summed on the same days. RMSE per cut pooled over seasons.
+- F2: weighted-median 1 - Dr / TAW; anomaly = minus its mean within each season-cut window (same for sensors).
+Prep (weights only): effective versions 67-1,550 (all >= 50); radar dates with LAI < 2 before the cut: beet / potato
+20-75, wheat only 8-15. Weighting moves TEW and Kcb_mid; TAW, root depth and start depletion stay near their prior means
+(~1.0 / 0.25) - radar sees the surface, not the root zone. Expectation stated before the look: F2 gain likely small.
+Look waits for the potato 2022 decision (ICOS ARCHIVE management records, owner download).
+
+## 2026-11-05 - Water v3: potato 2022 decision (BEFORE the look)
+ICOS DE-RuS ARCHIVE INTERIM L2 (owner download, 141 MB) checked: the ancillary file holds only species + sowing dates
+(GRP_SPP), LAI, biomass, canopy height and soil groups; site info has no management group. NO irrigation record exists.
+Crops confirm our field: beet sown 2021-04-21, potato 2022-04-30, wheat 2022-10-15, beet 2024-05-01, wheat 2024-10-25.
+Decision (pre-registered rule applied literally - records do not show irrigation): potato 2022 KEPT, rain only.
+Declared now, before the look: results are also reported WITHOUT potato 2022 as a secondary view; it does not change
+PASS/FAIL. Note for later: the archive has measured LAI at DE-RuS 2019-2025 (~40 values per year) - an independent
+check for our satellite LAI (not used in v3).
+Water v3 look, first launch: crashed (IndexError) inside the first season loop BEFORE any score was computed or printed
+(plain FAO-56 weekly sums unpacked from the wrong return value). Fixed (s1 = model sums); relaunched. No result seen.
+
+## 2026-11-05 - Water v3 ONE LOOK: FAIL (all three criteria)
+F1 weekly ET RMSE (mm/week, pooled seasons; weeks 17/20/20): 1 May v3 4.95 / v2 4.67 / FAO-56 5.95; 1 Jun 4.94 / 5.51 /
+6.32 (v3 best); 1 Jul 7.70 / 8.18 / 6.39. v3 best at 1 of 3 cuts (needed 2). F2 soil-water anomaly r: v3 0.400, v2 0.401
+(needed 0.7). 80 % band held the tower week in 33 % (needed 70 %). RESULT: FAIL. Secondary (without potato 2022, not
+deciding): RMSE 5.43/5.15/6.39, 5.08/5.78/6.63, 6.88/7.48/5.65; F2 r 0.449; band 36 %.
+After-the-fact diagnosis (disclosed, not a test): mean weekly bias v3 +2.9 (May) / -0.3 (Jun) / +2.5 (Jul) mm against
+tower 15.7 / 24.2 / 18.6; plain FAO-56 bias near 0 at every cut but large per season (beet 2021 -6.7, wheat 2025 +6.7).
+Tower below the band in 47 % of weeks, above in 19 %: the band is too narrow (versions vary soil, not the crop's water
+use enough) and v3 sits high. Radar weighting did not change root-zone soil water (F2 identical to v2), as expected
+before the look. Consequence: v3 not adopted; platform unchanged; no water advice. v2 stays the reference model.
+
+## 2026-11-05 - Thermal water method (SETMI-style): feasibility checks (no test data looked at)
+Owner asked for a Landsat LST + FAO-56 method for the district crops. Checks:
+- Clear Landsat 8/9 dates per 30 m pixel, Apr-Aug (qa_pixel clear, no cloud/shadow/cirrus/dilated; files already on
+  disk, season files end 31 Aug): 2022-2025 median 5-18 per season (pooled median 11, ~2-3 per month, July weakest
+  1-2), longest gap 32-56 days; 2021 only 1-5 (Landsat 8 alone). Pilot area fewer overpasses (5-9). Enough to reset
+  the bucket several times a season, NOT weekly.
+- Thermal band lwir11 (+ ST qa) for the 682 Apr-Aug scenes on disk: ~0.2 GB on disk (estimate; not downloaded).
+- Judged test sites (DE-RuS is used up for testing): ICOS DE-Kli Klingenberg (FLUXNET HH 2004-2025, 157 MB; archive
+  208 MB; rotation rapeseed, winter wheat, forage maize, spring/winter barley) and DE-Geb Gebesee (FLUXNET HH 2020-2026,
+  56 MB; archive 109 MB; rotation winter wheat, winter barley, potato, sugar beet, rape, peppermint). Years per crop
+  only in the archives (owner download). Both outside NRW: used only as test sites; needs our S2 (+S1) field chain there
+  (~0.9 GB per area-season with radar, ~0.3 GB without).
+Literature: SETMI (TSEB + FAO-56 water balance with reflectance Kcb, ET assimilation), ALEXI/DisALEXI + particle filter
+(better than EnKF), Sen-ET (S3 LST sharpened to 20 m; ~30 % error, stress detection doubtful), SAMIR-type thermal Ks.
+Thermal download done (2026-11-05, owner OK): 06_field/phase31_landsat_thermal.py (tests 2 pass), lwir11 + ST qa +
+qa_pixel, 1 Apr - 30 Sep, 4 areas x 2021-2025 = 807 scenes, ~160 MB. Trial note: one 'clear' July 2023 date read ~5 C
+(thin cloud missed by qa_pixel) -> the method needs an extra LST-vs-air-temperature screen (to pre-register).
+Test-site Landsat (owner OK, 8 GB package): reflectance + thermal for DE-Kli 2018/2021/2022/2023/2025 and DE-Geb
+2020/2021/2022/2024 done, 508 MB. Sites defined in 06_field/areas.py as TEST_AREAS (kept out of AREAS so platform /
+training never use them; test_areas_test_sites.py). Unreadable source files on Planetary Computer skipped after retries
+(new safe_scene): reflectance LC08 192024 2022-03-21, 193024/193025 2022-11-07, 194024 2022-06-23; thermal LC08 193025
+2022-05-15 (DE-Kli, in season; to retry later). Sentinel-1/2 via openEO running.
+Test-site Sentinel download: actual size ~12 GB, not 8 (2018-2021 seasons carry S1A+S1B radar, 1.6-1.8 GB each).
+Paused at 3.4 GB, owner informed; owner OK (2026-11-05 20:10) to continue everything with radar (~8.5 GB more).
+Test-site weather (owner OK, ~2.3 GB temporary): HYRAS tasmax/tasmin/hurs/pr 2018 + 2020-2025, 144 cells per site box
+(+2 km), 06_field/phase32_hyras_testsites.py (test passes) -> data/processed/field/hyras_testsites_<year>.npz (~0.4 MB
+each); national files deleted after reading. Full-year rain DE-Geb 367-623 mm (2018 / 2022 / 2025 dry),
+DE-Kli 518-973 mm. Sunlight: SARAH-3 Germany box on disk. Wind rule (to pre-register): nearest DWD station with wind on
+>= 95 % of season days -> DE-Geb Erfurt-Weimar 01270 (13 km), DE-Kli Nossen 06314 (23 km; the
+nearer stations 00991 / 00896 have no wind; Zinnwald 877 m ridge is farther, 24 km).
+
+2026-11-05 22:10 Test-site Sentinel download: run stopped at DE-Geb 2021 s1 download on an openEO server error [500] (temporary; retry only covered 429).
+Fix: retry() in phase7_step2_download.py now also retries 500/502/503/504 (test tests/field/test_retry.py, 5 pass). Restarted degeb 2021/2022/2024
+(finished jobs reused by title; the partial degeb 2021 s1 folder is re-downloaded). No data or rule change.
+2026-11-05 23:50 Test-site Sentinel restart stopped silently at 22:25 (no error; process was launched detached and ended with its shell). Relaunched as a tracked background task for degeb 2022/2024; the partial degeb 2022 s1_desc (no .complete) is re-downloaded.
+2026-11-05 Owner OK to continue the test-site Sentinel download to ~14 GB total (above the ~12 GB estimate).
+2026-11-05 Owner request: D and C nearly full -> use E (USB, E:\vista_archive, same layout). Owner OK to delete test-site seasons from D after SHA-256-verified copy, leaving folder links (junctions) to E; owner: use E as much as possible.
+2026-11-06 Owner OK: (1) delete C Temp\q3h1ps21 (VS/Android installer leftovers, 6.7 GB) and clear pip cache; (2) move NRW raw field_v2 seasons to E (verified copy, delete from D, junction); (3) move VirtualBox VM UBUNTU to E.
+2026-11-06 00:15 Test sites dekli 2018/21/22/23/25, degeb 2020/21: 2,859 files SHA-256 verified on E (E:\vista_archive\MANIFEST_testsites_20261105.csv), removed from D, junctions left. VirtualBox + Ubuntu VM removed by owner. pip cache cleared (4.3 GB). Started NRW raw field_v2 copy to E (20 seasons).
+2026-11-06 Owner OK: install pyTSEB (PyPI); commit + push the uncommitted field work; continue overnight incl. the thermal one look after pre-registration; if results are very good, compare with published industry numbers, otherwise owner reviews first.

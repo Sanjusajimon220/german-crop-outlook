@@ -5,7 +5,7 @@ from pathlib import Path
 
 CODE = Path(__file__).resolve().parents[2] / "06_field"
 sys.path.insert(0, str(CODE))
-for extra in ("02_district_model",):
+for extra in ("02_district_model", "01_data"):
     p = Path(__file__).resolve().parents[2] / extra
     if p.exists():
         sys.path.append(str(p))

@@ -26,13 +26,16 @@ def s1(con, orbit="ascending"):
     return c.create_job(title=title, out_format="GTiff")
 
 
+TRANSIENT = ("[429]", "[500]", "[502]", "[503]", "[504]")     # rate limit and temporary server errors
+
+
 def retry(fn, tries=8):
     import time
     for k in range(tries):
         try:
             return fn()
         except Exception as e:
-            if "429" not in str(e) or k == tries - 1:
+            if not any(c in str(e) for c in TRANSIENT + ("429",)) or k == tries - 1:
                 raise
             time.sleep(20 * (k + 1))
 

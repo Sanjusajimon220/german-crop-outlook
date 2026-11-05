@@ -5,10 +5,17 @@ AREAS = {"pilot": (304000, 5648000), "selhausen": (316000, 5634000), "north": (2
 SIZE = 8000
 SEASONS = {"pilot": [2021, 2022, 2023, 2024, 2025], "selhausen": [2021, 2022, 2023, 2024, 2025],
            "north": [2021, 2022, 2023, 2024, 2025], "south": [2021, 2022, 2023, 2024, 2025]}
+# Flux-tower TEST sites outside NRW (thermal water method, project log 2026-11-05): 8 x 8 km around the ICOS tower,
+# only the seasons with district-model crops (DE-Kli: maize 2018, wheat 2021 / 2025, spring barley 2022, winter barley
+# 2023; DE-Geb: potato 2020, wheat 2021 / 2022 / 2024). Used for testing only, never shown on the platform.
+# Kept OUT of AREAS / SEASONS so platform export, production training and the area test never loop over them.
+TEST_AREAS = {"dekli": (814000, 5644000), "degeb": (630000, 5659000)}
+TEST_SEASONS = {"dekli": [2018, 2021, 2022, 2023, 2025], "degeb": [2020, 2021, 2022, 2024]}
+TEST_SITES = set(TEST_AREAS)
 
 
 def bounds(area):
-    x0, y0 = AREAS[area]
+    x0, y0 = AREAS[area] if area in AREAS else TEST_AREAS[area]
     return x0, y0, x0 + SIZE, y0 + SIZE
 
 

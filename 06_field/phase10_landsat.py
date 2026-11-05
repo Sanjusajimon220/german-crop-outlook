@@ -68,6 +68,15 @@ def one_scene(it, path, transform, w, h):
     os.replace(tmp, path)                                         # complete files only
 
 
+def safe_scene(it, path, transform, w, h):
+    """one_scene, but a scene whose source file stays unreadable after the retries is skipped (returns its id)."""
+    try:
+        one_scene(it, path, transform, w, h)
+        return None
+    except Exception:
+        return it.id
+
+
 def fetch(area, year):
     out = os.path.join(raw_dir(area, year), "landsat")
     os.makedirs(out, exist_ok=True)
@@ -92,7 +101,9 @@ def fetch(area, year):
     with rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR", GDAL_HTTP_MULTIRANGE="YES", GDAL_HTTP_MERGE_CONSECUTIVE_RANGES="YES",
                       VSI_CACHE="TRUE", CPL_VSIL_CURL_ALLOWED_EXTENSIONS=".tif"):
         with ThreadPoolExecutor(8) as ex:
-            list(ex.map(lambda a: one_scene(*a, transform, w, h), todo))
+            failed = [f for f in ex.map(lambda a: safe_scene(*a, transform, w, h), todo) if f]
+    if failed:
+        print(f"{area} {year}: skipped {len(failed)} unreadable scene(s): {failed}", flush=True)
     pd.DataFrame(rows).to_csv(os.path.join(out, "scenes.csv"), index=False)
     print(f"{time.strftime('%H:%M')} {area} {year} landsat: {len(rows)} scenes "
           f"({sum(r['platform'] == 'landsat-8' for r in rows)} L8, {sum(r['platform'] == 'landsat-9' for r in rows)} L9)", flush=True)
