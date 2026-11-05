@@ -2884,3 +2884,89 @@ Fix: retry() in phase7_step2_download.py now also retries 500/502/503/504 (test 
 2026-11-06 Owner OK: (1) delete C Temp\q3h1ps21 (VS/Android installer leftovers, 6.7 GB) and clear pip cache; (2) move NRW raw field_v2 seasons to E (verified copy, delete from D, junction); (3) move VirtualBox VM UBUNTU to E.
 2026-11-06 00:15 Test sites dekli 2018/21/22/23/25, degeb 2020/21: 2,859 files SHA-256 verified on E (E:\vista_archive\MANIFEST_testsites_20261105.csv), removed from D, junctions left. VirtualBox + Ubuntu VM removed by owner. pip cache cleared (4.3 GB). Started NRW raw field_v2 copy to E (20 seasons).
 2026-11-06 Owner OK: install pyTSEB (PyPI); commit + push the uncommitted field work; continue overnight incl. the thermal one look after pre-registration; if results are very good, compare with published industry numbers, otherwise owner reviews first.
+
+## 2026-11-06 - Water v4 (thermal, SETMI-style) PLAN / PRE-REGISTRATION (before any v4 result; no tower or SWC data of DE-Kli / DE-Geb looked at)
+Owner OK (2026-11-06 00:20): build overnight and run the one look; if the result is very good, compare with published
+industry numbers; otherwise the owner reviews first. Nothing on the platform changes from this test.
+Design v4 = v3 ensemble machinery with THERMAL ET instead of radar wetness:
+- Model: FAO-56 dual Kc v2 (unchanged equations), 2,000 Latin-hypercube versions as v3, EXCEPT Kcb_mid factor range
+  widened to 0.7-1.3 (v3 one look: band too narrow because versions varied soil more than crop water use; learned on
+  DE-RuS, disclosed). Other ranges as v3 (TAW 0.5-1.5, root 0.6-1.4, dr0 0-0.5, TEW 0.7-1.3). Seed 0.
+- Thermal ET on clear Landsat 8/9 dates (1 Apr - 30 Sep): TSEB Priestley-Taylor (pyTSEB 2.5.4 TSEB_PT, default alpha 1.26)
+  on the field-interior median surface temperature (C2 L2 ST_B10). Inputs: LAI = field LAI that day (as the model); air
+  temperature at overpass from HYRAS Tmin/Tmax with a sine rise from sunrise to 14:00 local solar time; vapour pressure
+  from HYRAS daily RH x es(daily mean T); wind = daily mean at the wind station (10 m); instantaneous sunlight = SARAH-3
+  daily total on a sine day shape; diffuse share and net radiation by pyTSEB (Campbell/Weiss-Norman); canopy height
+  max(0.1, h_max x min(1, LAI/3)) with h_max 0.9 m cereals, 2.5 m maize, 0.6 m potato; fc = 1 - exp(-0.5 LAI); green
+  fraction 1; emissivity 0.98 leaf / 0.95 soil; view zenith 0. Daily ET = LE_inst / Rs_inst x Rs_daily (solar ratio).
+  pypro4sail (not on PyPI) is not used; the 4SAIL variant is stubbed and never called.
+- Thermal pixel / date screen: Landsat 30 m pixels whose centre is >= 100 m inside the field outline; per pixel
+  qa_pixel clear (bit 6, bits 1-4 = 0), ST uncertainty <= 3 K, and LST >= T_air(overpass) - 5 K (cold = cloud missed by
+  qa_pixel); a date is used if >= 50 % of interior pixels (and >= 4 pixels) pass; TSEB flag >= 255 or ET <= 0 dropped.
+- Weighting: Gaussian likelihood of each version's daily ET vs thermal ET on thermal dates before the cut (cumulative),
+  error = max(30 % of thermal ET, 0.5 mm/day) (Sen-ET / TSEB literature ~30 %); tempering to >= 50 effective versions
+  (v3 weigh()). v4 = weighted median, 80 % band = weighted 10th-90th percentile; v2 = unweighted median.
+Test-site field chain (fixed now; uses satellite data only):
+- Field outline: 10 m pixels within 600 m of the tower whose Sentinel-2 NDVI series (SCL 4/5 clear dates 1 Mar - 30 Sep,
+  >= 8 common dates) correlates r >= 0.9 with the tower 3x3 median series and mean NDVI within 0.10; the 4-connected
+  region holding the tower pixel. Field must give >= 4 interior Landsat pixels, else the season is dropped (logged
+  before the look). Outline map saved per season for the owner.
+- LAI: fv2 S2 retrieval (prosail_net.pt, same as NRW) on the outline minus a 2-pixel edge; field median on dates with
+  >= 50 % of field pixels clear; daily by linear interpolation, 0 outside. Season start = first day LAI >= 0.5 (or 1 Mar),
+  peak = max of the 3-date rolling median, end = first day after the peak with LAI < 0.5 (or 30 Sep).
+- Weather: HYRAS cell nearest the tower; SARAH-3 nearest cell; wind DE-Geb Erfurt-Weimar 01270, DE-Kli Nossen 06314
+  (nearest station with wind on >= 95 % of season days); ET0 FAO-56 Penman-Monteith (v2 code). Soil: district soil
+  table (DE-Kli 14628, DE-Geb 16068), ratio 1.0. Rain only (no irrigation records).
+- Plain FAO-56 comparator: single Kc on the satellite season; FAO Table 12 adds barley (0.30, 1.15, 0.25) and maize
+  (0.30, 1.20, 0.35); KCB_MID / P / root as v2 tables.
+Seasons: JUDGED (decide pass/fail, pooled) = winter cereals DE-Kli 2021 wheat, 2023 winter barley, 2025 wheat; DE-Geb
+2021, 2022, 2024 wheat. Reported separately, NOT deciding: DE-Kli 2022 spring barley; indicative: DE-Kli 2018 maize,
+DE-Geb 2020 potato. DE-RuS is used up for testing (v3) and is not part of this look.
+Tests (one look, same as v3): F1 weekly ET RMSE in the 4 weeks after each cut (1 May, 1 Jun, 1 Jul), perfect weather
+and observed LAI after the cut, tower = gap-filled LE_F_MDS on days with >= 80 % good half-hours, weeks with >= 5 valid
+days. F2 root-zone relative storage anomaly vs depth-mean of all SWC_F_MDS sensors (QC <= 1). PASS if v4 has lower
+RMSE than v2 AND plain FAO-56 at >= 2 of 3 cuts AND pooled F2 anomaly r >= 0.7 AND the 80 % band holds the tower week in
+>= 70 % of weeks. Secondary, not deciding: same with LE_CORR (energy-balance-closed tower ET; TSEB closes the balance,
+the tower does not); thermal ET itself vs tower on thermal dates (daily RMSE, bias). Expectation stated now: the band
+criterion is the hardest; thermal dates are sparse in some seasons.
+If PASS: compare relative weekly error with published numbers (OpenET cropland monthly MAE ~17 %, Volk 2024; TSEB /
+Sen-ET daily ~30 %), scoped to these two sites. Proof for advice still needs new seasons and the 2027 trial.
+Code: 06_field/phase33_testsite_field.py (outline, LAI, weather), phase34_water_v4.py (TSEB, weighting, look); tests first.
+
+## 2026-11-06 - Water v4: build notes + rulings (BEFORE prep / look; no tower or SWC data used)
+Code: 06_field/phase33_testsite_field.py (tests/field/test_testsite_field.py, 6 pass), phase34_water_v4.py
+(tests/field/test_water_v4.py, 7 pass incl. a TSEB sanity check). Rulings where the pre-registration was silent:
+- TSEB leaf width 0.05 m (crops; pyTSEB default 0.1 m is for trees); wind floor 0.5 m/s; TSEB LAI floor 0.05.
+- Two overlapping Landsat paths on one day: the scene with more clear interior pixels is kept.
+- Thermal ET only when instantaneous sunlight > 50 W/m2 (solar ratio undefined near zero).
+- Air pressure from elevation (FAO-56 eq. 7); local solar time = UTC + longitude / 15.
+- Field LAI after the S2 download window (ends 31 Aug) is 0 (as v2 'fillna(0)'); affects Sept only (cereals harvested).
+- Outline check DE-Kli 2021: 60 ha wheat field around the tower, cut by the 600 m search radius to the NE (as ruled).
+
+## 2026-11-06 - Water v4 prep (BEFORE the look; no tower / SWC data used)
+Field outlines (phase33): DE-Kli 2018 maize 64 ha, 2021 wheat 60 ha, 2023 barley 71 ha, 2025 wheat 63 ha; DE-Geb 2021
+wheat 78 ha, 2022 50 ha, 2024 48 ha. DROPPED by the pre-registered size rules: DE-Kli 2022 spring barley (outline only
+0.3 ha: tower pixels' NDVI peaks at 0.6, few neighbours correlate) and DE-Geb 2020 potato (3.4 ha, < 4 interior Landsat
+pixels). Code guards added test-first (active(), empty-season handling; tests 10 pass).
+Usable thermal dates per season (Apr-Sep): DE-Kli 2021 1 (late Sept), 2023 8, 2025 9; DE-Geb 2021 1 (Sept), 2022 7,
+2024 1 (30 Jul); DE-Kli 2018 maize 8. Before the cuts only 0-5 dates; in DE-Kli 2021, DE-Geb 2021 and 2024 NONE before
+any cut (v4 = v2 there). Cause checked on whole scenes (no tower data): many scenes are partly clear but the field is under
+cloud / shadow; 2021 had Landsat 8 only. Rules NOT changed. Expectation stated before the look: v4 moves little from v2;
+a pass is unlikely to come from the thermal weighting; the widened Kcb range mainly widens the band.
+
+## 2026-11-06 - Water v4 (thermal) ONE LOOK: FAIL (all three criteria)
+Judged winter cereals (DE-Kli 2021/2023/2025, DE-Geb 2021/2022/2024), F1 weekly ET RMSE mm/week (weeks 22/21/22; tower
+mean 18.3/23.5/16.1): 1 May v4 7.26 / v2 7.13 / FAO-56 5.28; 1 Jun 6.73 / 6.05 / 9.76; 1 Jul 8.50 / 7.67 / 6.73.
+v4 best at 0 of 3 cuts (needed 2). F2 soil-water anomaly r v4 0.651, v2 0.657 (needed 0.7). 80 % band held the tower
+week in 46 % (needed 70 %); tower BELOW the band in 54 %. RESULT: FAIL. Not adopted; v2 stays the reference; platform
+unchanged; no water advice. Industry comparison not made (owner rule: only if very good).
+Secondary (not deciding): with LE_CORR (closed balance) RMSE 5.40/5.32/5.41, 4.24/3.98/7.49, 7.55/6.88/5.77 - same
+order. Thermal ET itself vs tower on 25 thermal dates: RMSE 1.78 mm/d, bias +1.41, r 0.83 (vs LE_CORR 1.44, +1.05).
+Indicative maize 2018: v4 best at 1 Jul (5.06 vs v2 10.29) on 4 weeks only.
+After-the-fact reading (disclosed, not a test): (1) the models run HIGH against both towers (tower below the band in
+54 % of weeks, as at DE-RuS with v3); (2) thermal ET also reads high (+1.4 mm/d), so weighting towards it cannot pull the
+versions down - both share a high bias against the tower; (3) thermal dates before the cuts were 0-5 per season, so v4
+barely moved from v2. The thermal signal does track the tower day to day (r 0.83), which is the one positive finding.
+Next candidates (owner decides; each needs a new pre-registration and new data): a bias study of FAO-56 Kcb / ET0 at the
+three towers (all show the models high), and thermal used for stress detection rather than for amounts.
+2026-11-06 NRW raw field_v2 (20 seasons, 6,317 files) and test sites degeb 2022/2024 (673 files) SHA-256 verified on E (manifests E:\vista_archive\MANIFEST_nrw_raw_20261106.csv, MANIFEST_testsites2_20261106.csv), removed from D, junctions left. Free: C 50 GB, D 54 GB, E 79 GB. Raw satellite data now needs the USB drive plugged in.
