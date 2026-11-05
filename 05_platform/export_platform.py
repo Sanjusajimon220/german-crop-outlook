@@ -90,6 +90,14 @@ def main():
         rows.append(dict(crop=c, official=o, level="national" if lvl else "states", n=len(gg), years=f"{gg['year'].min()}-{gg['year'].max()}",
                          official_err=f("official_value"), ours_err=f("ours_value"), lastyear_err=f("persistence"),
                          avg5_err=f("climatology5")))
+    # 95 % season-bootstrap verdict of the national MARS cells (review step 2, project log 2026-11-05)
+    vb = os.path.join(P, "benchmarks", "review_step2", "cells_bootstrap.csv")
+    if os.path.exists(vb):
+        v = pd.read_csv(vb, dtype={"month": str}).set_index(["crop", "month"])
+        for r in rows:
+            k = (r["crop"], r["official"][-2:])
+            if r["level"] == "national" and r["official"].startswith("mars_") and k in v.index:
+                r.update(verdict=v.at[k, "verdict"], diff_lo=float(v.at[k, "lo"]), diff_hi=float(v.at[k, "hi"]))
     acc["benchmarks"] = rows
     json.dump(acc, open(os.path.join(OUT, "accuracy.json"), "w"), separators=(",", ":"))
     for fn in sorted(os.listdir(OUT)):

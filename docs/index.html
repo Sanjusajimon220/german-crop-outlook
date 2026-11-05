@@ -208,10 +208,10 @@ section[hidden],.ctl[hidden]{display:none}
 <section id="page-accuracy" hidden>
   <div class="prose" style="padding-block:14px">
     <h2>How accurate is the forecast?</h2>
-    <p>All numbers below come from the test years 2018-2025, which the model never saw during fitting, and from three federal states that were held out completely (Schleswig-Holstein, Baden-Wuerttemberg, Brandenburg). The JRC MARS forecast and the Destatis harvest reporters are compared at the same date: for each of their publications only our forecast from that date or earlier is used. Errors are in % of the average yield (RMSE); lower is better.</p>
+    <p>All numbers below come from the test years 2018-2025, which the model never saw during fitting, and from three federal states that were held out completely (Schleswig-Holstein, Baden-Wuerttemberg, Brandenburg). The JRC MARS forecast and the Destatis harvest reporters are compared at the same date: for each of their publications only our forecast from that date or earlier is used. Errors are in % of the average yield (RMSE); lower is better. Test forecasts use data up to each date in near-final versions (hindcast).</p>
   </div>
   <div class="card"><h3>Germany: v10 vs JRC MARS vs last year's yield</h3><div class="tbl" id="tbl-mars"></div>
-    <p class="note">Win = our error lower than MARS. Grain maize: official district data only to 2021 (4 years).</p></div>
+    <p class="note">These are hindcasts: our test forecasts use observed weather, sunlight and crop-stage data up to each date in their near-final versions, which were not all published on that date; MARS used only real-time data. Grain maize: official district data only to 2021 (4 years). The 2027 season will be the first fully real-time comparison.</p></div>
   <div class="card" style="margin-top:16px"><h3>vs Destatis harvest reporters</h3><div class="tbl" id="tbl-destatis"></div>
     <p class="note">Destatis publishes its June estimate (wheat) at the end of July; the July/August and August/September figures come after the harvest and are close to measurements.</p></div>
   <div class="card" style="margin-top:16px"><h3>Districts: v10 vs previous model v9 (typical error, t/ha)</h3><div class="tbl" id="tbl-dist"></div></div>
@@ -227,7 +227,7 @@ section[hidden],.ctl[hidden]{display:none}
     <p><b>v12 (11 Oct 2026).</b> Same forecasts again. Barley ranges widened where the training years showed them too narrow (district x 1.19, national x 1.63). The Sentinel-2 correction was also tested on 2024, a year it had not seen, and made district errors worse in all five cases, so it stays out.</p>
     <p><b>Data.</b> DWD HYRAS weather, DWD stations, CM SAF SARAH-3 sunlight, BGR soils, DWD phenology, Destatis district yields (regional database 41241) and Duden et al. 2024, fertiliser statistics, MODIS MOD13Q1, ESA WorldCover. Benchmarks: JRC MARS Bulletins 2009-2026, Destatis Fachserie 3 Reihe 3.2.1 2005-2022.</p>
     <p><b>Validation.</b> Every design choice was made on the training years 1979-2017 by forward validation (fit up to a year, predict the years after), mostly in two separate periods, with the rules written down before results were seen. The test years were looked at once, after freezing the model with file fingerprints. The frozen predictions for 2026 will be checked against the official 2026 district yields in spring 2027.</p>
-    <p><b>Known limitations.</b> The model is still somewhat too optimistic in very dry and hot summers, above all for maize. Barley before harvest is behind MARS. At state level the Destatis harvest reporters, who observe the crop, are better. Grain maize district data end in 2021. MODIS satellites are retiring; crop-specific Sentinel-2 greenness is being added (next version).</p>
+    <p><b>Known limitations.</b> The model is still somewhat too optimistic in very dry and hot summers, above all for maize. Against MARS the forecast is level in most month-by-crop comparisons, clearly better for wheat in June and clearly worse for barley in August. At state level the Destatis harvest reporters, who observe the crop, are better. Grain maize district data end in 2021. MODIS satellites are retiring; crop-specific Sentinel-2 greenness is being added (next version).</p>
     <p><b>Field level (NRW study areas).</b> Weekly 10 m green LAI and NDVI for every field in four 8 × 8 km areas, seasons 2021–2025: measured from clear Sentinel-2 images (green LAI by a neural network trained on radiative-transfer simulations of cereal canopies; for maize, sugar beet, potato and rapeseed crop-specific networks are being tested), gaps up to 30 days by a straight line, longer gaps by a model driven by the Sentinel-1 radar change, each value with its typical error. Single bad clear images (haze, missed cloud edges) are removed from LAI. Tests and comparisons with Copernicus HR-VPP and LAI 300 m are on the Accuracy page.</p>
   </div>
 </section>
@@ -487,8 +487,13 @@ function accuracyTables() {
   const mars = B.filter(b => b.official.startsWith("mars") && b.level === "national" && mon[b.official.slice(-2)]);
   const order = Object.keys(META.crops);
   mars.sort((a, b) => order.indexOf(a.crop) - order.indexOf(b.crop) || a.official.localeCompare(b.official));
-  document.getElementById("tbl-mars").innerHTML = `<table><thead><tr><th>Crop</th><th>Month</th><th>Years</th><th>v10</th><th>MARS</th><th>Last year</th><th></th></tr></thead><tbody>${
-    mars.map(b => `<tr><td>${lab(b.crop)}</td><td>${mon[b.official.slice(-2)]}</td><td>${b.n}</td><td class="${b.ours_err < b.official_err ? "win" : ""}">${fmt(b.ours_err, 1)} %</td><td>${fmt(b.official_err, 1)} %</td><td>${fmt(b.lastyear_err, 1)} %</td><td>${b.ours_err < b.official_err ? '<span class="pill good">win</span>' : '<span class="pill bad">behind</span>'}</td></tr>`).join("")}</tbody></table>`;
+  document.getElementById("tbl-mars").innerHTML = `<table><thead><tr><th>Crop</th><th>Month</th><th>Years</th><th>v10</th><th>MARS</th><th>Last year</th><th>Difference (95 % interval)</th></tr></thead><tbody>${
+    mars.map(b => { const v = b.verdict || (b.ours_err < b.official_err ? "lower error" : "higher error");
+      const pill = v === "lower error" ? '<span class="pill good">better</span>' : v === "higher error" ? '<span class="pill bad">worse</span>' : '<span class="pill">level</span>';
+      return `<tr><td>${lab(b.crop)}</td><td>${mon[b.official.slice(-2)]}</td><td>${b.n}</td><td class="${v === "lower error" ? "win" : ""}">${fmt(b.ours_err, 1)} %</td><td>${fmt(b.official_err, 1)} %</td><td>${fmt(b.lastyear_err, 1)} %</td><td>${pill} ${b.diff_lo != null ? `${fmt(b.ours_err - b.official_err, 1)} [${fmt(b.diff_lo, 1)}, ${fmt(b.diff_hi, 1)}]` : ""}</td></tr>`; }).join("")}</tbody></table>
+    <p class="note">Difference = our error minus MARS's, in % of the mean yield; 95 % interval by resampling whole test seasons.
+    'Better' / 'worse' only when the whole interval is below / above zero, otherwise 'level'. With 4-8 seasons most differences
+    are not distinguishable from chance; per crop, no difference is significant (Diebold-Mariano p 0.29-0.60).</p>`;
   const des = B.filter(b => b.official.startsWith("destatis") && b.official.endsWith("_pub"));
   const dn = { destatis_jun_pub: "June estimate", destatis_jul_aug_pub: "Jul/Aug result", destatis_aug_sep_pub: "Aug/Sep result" };
   document.getElementById("tbl-destatis").innerHTML = `<table><thead><tr><th>Crop</th><th>Figure</th><th>Level</th><th>n</th><th>v10</th><th>Destatis</th></tr></thead><tbody>${
