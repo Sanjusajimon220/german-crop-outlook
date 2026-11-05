@@ -21,8 +21,9 @@ reproducible code.
 - District error v10 vs v9: wheat -11 to -18 %, barley -5 to -12 %, grain maize -4 to -7 %, silage maize -13 to
   -22 %, potato -7 to -17 % (known districts / three held-out states).
 - Germany vs the JRC MARS forecast at the same date (hindcast; our inputs are near-final data versions, MARS used real-time
-  data; 8 seasons, comparisons not independent - significance test pending): v10 lower error in 15 of 22 month-crop
-  comparisons (wheat May-July,
+  data; 4-8 seasons): lower error in 15 of 22 month-crop comparisons, but with 95 % season-bootstrap intervals only 3 are
+  significant (wheat June; grain maize Sept / Oct, 4 seasons), 2 significantly worse (grain maize July, barley August),
+  17 ties; per crop no significant difference (Diebold-Mariano p 0.29-0.60). Count: (wheat May-July,
   potato May-September, both maize crops from August); behind for barley, wheat in August, maize in July,
   potato in October.
 - vs the Destatis harvest reporters: better nationally for wheat (June estimate) and silage maize; the reporters
