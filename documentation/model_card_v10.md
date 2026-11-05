@@ -40,7 +40,8 @@ fertiliser statistics, MODIS MOD13Q1 NDVI over ESA WorldCover cropland.
 wheat -11 to -13 % / -16 to -18 %; barley -5 to -12 % / -8 to -10 %; grain maize -4 to -6 % / -4 to -7 %;
 silage maize -13 to -20 % / -15 to -22 %; potato -7 to -9 % / -14 to -17 %. Better in every cell.
 
-**National, vs JRC MARS** (error in % of mean yield, v10 / MARS): wins 15 of 22 month-crop cells: wheat
+**National, vs JRC MARS** (error in % of mean yield, v10 / MARS; hindcast with near-final input data while MARS used real-time
+data; 8 seasons, cells not independent, significance test pending): lower error in 15 of 22 month-crop cells: wheat
 May-July (e.g. June 3.9 / 7.0), potato May-September, grain and silage maize from August. Behind: barley
 May, July, August (June 7.7 / 7.5), wheat August, both maize crops July, potato October.
 
