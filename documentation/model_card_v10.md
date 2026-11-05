@@ -42,7 +42,8 @@ silage maize -13 to -20 % / -15 to -22 %; potato -7 to -9 % / -14 to -17 %. Bett
 
 **National, vs JRC MARS** (error in % of mean yield, v10 / MARS; hindcast with near-final input data while MARS used real-time
 data; 4-8 seasons; 95 % season-bootstrap: 3 cells significantly lower (wheat June, grain maize Sept / Oct), 2 higher
-(grain maize July, barley Aug), 17 ties; per crop all ties, Diebold-Mariano p 0.29-0.60): lower error in 15 of 22 cells: wheat
+(grain maize July, barley Aug), 17 ties; per crop all ties, Diebold-Mariano p 0.29-0.60; OCR spot-check 20/20; Eurostat
+= Destatis 2018-2025 except 2025 green maize, which Eurostat reports as dry matter): lower error in 15 of 22 cells: wheat
 May-July (e.g. June 3.9 / 7.0), potato May-September, grain and silage maize from August. Behind: barley
 May, July, August (June 7.7 / 7.5), wheat August, both maize crops July, potato October.
 
