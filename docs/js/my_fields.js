@@ -357,7 +357,7 @@ async function paint() {
   document.getElementById("mf-lai-chart").innerHTML = laiChart;
   document.getElementById("mf-ndvi-chart").innerHTML = ndviChart;
   const trBox = document.getElementById("mf-traits");
-  if (trBox) trBox.innerHTML = traitsSection({ tr: CUR.tr, season: s.season, week: w, weeks: CUR.weeks });
+  if (trBox) trBox.innerHTML = traitsSection({ tr: CUR.tr, season: s.season, week: w, weeks: CUR.weeks, lai: s.lai });
   // Overview: this field's weekly curve for the chosen layer (Zones -> green LAI), dashed line = the slider's week
   const ovNdvi = CUR.layer === "ndvi";
   document.getElementById("mf-ov-title").textContent = `This field through the season: weekly ${ovNdvi ? "NDVI" : "green LAI"} (band ± typical error, shaded = off-season, dashed = selected week)`;

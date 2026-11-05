@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc , leavesField, clearRgbDate, fieldUrl, noDataReason, zoomAllowed, areaToEnter, groupMedian, exportCheck, fieldRgbDate, areaRgbDate, legendSpec, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS, CLASS_STYLES, classLegend, classByCrop, stageMarks, calendarChart, playIcon, nextFrame, TRAITS, traitsSection, STAGE_LABELS, calendarNote, retrievalNote } from "../../docs/js/field_core.js";
+import { weekIndex, sourceLabel, withinNoise, nearestRgbDate, fmtUnc , leavesField, clearRgbDate, fieldUrl, noDataReason, zoomAllowed, areaToEnter, groupMedian, exportCheck, fieldRgbDate, areaRgbDate, legendSpec, seriesChart, SOURCE_COLOURS, cropStyle, vsMedianText, cropSummary, cropMedians, monthlyFrames, zoneSummary, zoneAreas, zoneTotal, PRODUCTS, CLASS_STYLES, classLegend, classByCrop, stageMarks, calendarChart, playIcon, nextFrame, TRAITS, traitsSection, STAGE_LABELS, calendarNote, retrievalNote, traitNotes } from "../../docs/js/field_core.js";
 
 test("play / pause icon and the next frame of a time slider (stops at the end unless it loops)", () => {
   assert.match(playIcon(false), /<path d="M4 2.5v11l9-5.5z"/);
@@ -333,4 +333,21 @@ test("season timing label: crop named, regional and checked; other crops say why
 test("retrieval note only for crops the cereal-trained network was not made for", () => {
   for (const g of ["maize", "sugar beet", "potato", "rapeseed"]) assert.match(retrievalNote(g), /trained on cereal canopies/);
   for (const g of ["wheat", "barley", "other cereal", "grass / fodder", "other"]) assert.equal(retrievalNote(g), "");
+});
+
+test("missing chlorophyll weeks are shaded and labelled with their reason", () => {
+  const lai = [0.3, 0.6, 0.6, 0.6, 2.0, 0.2];
+  const tr = { cab: [null, null, null, null, 50, null], cbrown: [0.2, null, null, null, 0.1, 0.5] };
+  const n = traitNotes(tr, lai);
+  assert.deepEqual(n.cab, ["LAI < 0.5 (soil)", "gap > 30 days", "gap > 30 days", "gap > 30 days", null, "LAI < 0.5 (soil)"]);
+  assert.deepEqual(n.cbrown, [null, "gap > 30 days", "gap > 30 days", "gap > 30 days", null, null]);
+  const svg = seriesChart({ values: [1, null, null, null, 2, 3], unc: [0.1, null, null, null, 0.1, 0.1], src: [1, 0, 0, 0, 1, 1],
+    season: [1, 1, 1, 1, 1, 1], week: 0, weeks: ["2025-01-06", "2025-01-13", "2025-01-20", "2025-01-27", "2025-02-03", "2025-02-10"],
+    max: 5, label: "x", notes: n.cbrown });
+  assert.equal((svg.match(/class="nogap"/g) || []).length, 1);                  // one shaded run for three weeks
+  assert.match(svg, /gap &gt; 30 days/);
+  const html = traitsSection({ tr: { ccc: [1, 2, 3, 4, 5, 6], ccc_unc: [1, 1, 1, 1, 1, 1], ...tr, cab_unc: [1, 1, 1, 1, 1, 1],
+    cbrown_unc: [1, 1, 1, 1, 1, 1], src: [1, 1, 1, 1, 1, 1] }, season: [1, 1, 1, 1, 1, 1], week: 4,
+    weeks: ["2025-01-06", "2025-01-13", "2025-01-20", "2025-01-27", "2025-02-03", "2025-02-10"], lai });
+  assert.match(html, /LAI &lt; 0.5 \(soil\)/);
 });

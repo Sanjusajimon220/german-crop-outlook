@@ -259,7 +259,7 @@ export async function fieldPanel(id) {
     ${curve ? `<h3>Season timing</h3>${calendarChart({ curve, stages, weeks: FV.series.weeks, week: w })}` : ""}
     ${calendarNote(curve, marks, s.group)}
     <h3>Weekly NDVI</h3>${seriesChart({ values: s.ndvi, unc: s.ndvi_unc, src: s.ndvi_src, season: s.season, week: w, weeks: FV.series.weeks, max: 1, label: "NDVI" })}
-    ${traitsSection({ tr: (await loadTraits(FV.area, FV.year))?.fields[String(id)] || null, season: s.season, week: w, weeks: FV.series.weeks })}
+    ${traitsSection({ tr: (await loadTraits(FV.area, FV.year))?.fields[String(id)] || null, season: s.season, week: w, weeks: FV.series.weeks, lai: s.lai })}
     <p class="note">${SOURCE_COLOURS.map((c, i) => i ? `<span style="margin-right:10px;white-space:nowrap"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c}"></span> ${sourceLabel(i)}</span>` : "").join("")}<br>Band: ± typical error. Shaded weeks: before sowing / after harvest. Dashed: selected week.</p>
 `;
   h += await districtContext(f);

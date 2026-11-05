@@ -196,7 +196,7 @@ export const SOURCE_COLOURS = ["#8a96a3", "#1baf7a", "#2a78d6", "#eda100", "#625
 // weekly chart as an SVG string (no DOM, no d3): +- band and line over the weeks with a value, one dot per week
 // coloured by its source, off-season weeks shaded, the selected week dashed
 // marks (optional, stageMarks): dotted vertical line per expected crop stage
-export function seriesChart({ values, unc, src, season, week, weeks, max, label, marks = [] }) {
+export function seriesChart({ values, unc, src, season, week, weeks, max, label, marks = [], notes = [] }) {
   const n = values.length;
   if (!values.some(v => v != null)) return `<p class="note">No value this season for ${label}.</p>`;
   const W = 460, H = 160, L = 34, R = 10, T = 10, B = 24, f = v => +v.toFixed(1);
@@ -208,12 +208,17 @@ export function seriesChart({ values, unc, src, season, week, weeks, max, label,
   const line = runs.map(r => `M${r.map(i => `${x(i)},${y(values[i])}`).join("L")}`).join("");
   const bw = f((W - L - R) / Math.max(1, n - 1));
   const off = season.map((s, i) => (s ? "" : `<rect x="${f(x(i) - bw / 2)}" y="${T}" width="${bw}" height="${H - B - T}" fill="#8b96b4" fill-opacity=".12"/>`)).join("");
+  // weeks without a value for a stated reason: one hatched band per run of the same reason, labelled when wide enough
+  const nr = []; notes.forEach((r, i) => { if (r && (!nr.length || nr[nr.length - 1].r !== r || nr[nr.length - 1].b !== i - 1)) nr.push({ r, a: i, b: i }); else if (r) nr[nr.length - 1].b = i; });
+  const noteBands = nr.map(({ r, a, b }) => { const x0 = f(x(a) - bw / 2), wd = f(x(b) - x(a) + bw), esc = r.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return `<g class="nogap"><rect x="${x0}" y="${T}" width="${wd}" height="${H - B - T}" fill="url(#nogap)"/><title>no value: ${esc}</title>${wd >= 58 ? `<text x="${f(x0 + wd / 2)}" y="${T + 11}" text-anchor="middle" font-size="9.5">${esc}</text>` : ""}</g>`; }).join("");
+  const hatch = nr.length ? `<defs><pattern id="nogap" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#8b96b4" fill-opacity=".06"/><line x1="0" y1="0" x2="0" y2="6" stroke="#8b96b4" stroke-opacity=".35" stroke-width="1.2"/></pattern></defs>` : "";
   const ticks = [0, max / 2, max].map(t => `<line x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}" stroke="#8b96b4" stroke-opacity=".25"/><text x="${L - 5}" y="${y(t) + 4}" text-anchor="end">${+t.toFixed(2)}</text>`).join("");
   const months = weeks.map((w, i) => [w, i]).filter(([w]) => +w.slice(8, 10) <= 7 && ["11", "01", "03", "05", "07"].includes(w.slice(5, 7)))
     .map(([w, i]) => `<text x="${x(i)}" y="${H - 6}" text-anchor="middle">${["", "Jan", "", "Mar", "", "May", "", "Jul", "", "", "", "Nov"][+w.slice(5, 7)]}</text>`).join("");
   const dots = values.map((v, i) => (v == null ? "" : `<circle cx="${x(i)}" cy="${y(v)}" r="2.8" fill="${SOURCE_COLOURS[src[i]] || SOURCE_COLOURS[0]}"><title>${weeks[i]}: ${v}</title></circle>`)).join("");
   const stageLines = marks.map(m => `<line x1="${x(m.i)}" x2="${x(m.i)}" y1="${T}" y2="${H - B}" stroke="${STAGE_COLOUR}" stroke-width="1.2" stroke-dasharray="1 2"><title>expected ${m.label}: ${m.date}</title></line>`).join("");
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly ${label}">${off}${ticks}${months}${stageLines}
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly ${label}">${hatch}${off}${noteBands}${ticks}${months}${stageLines}
     <path d="${band}" fill="#8b96b4" fill-opacity=".22"/><path d="${line}" fill="none" stroke="#1b3a57" stroke-width="1.4"/>${dots}
     <line x1="${x(week)}" x2="${x(week)}" y1="${T}" y2="${H - B}" stroke="#8b96b4" stroke-dasharray="3 3"/></svg>`;
 }
@@ -227,17 +232,24 @@ export const TRAITS = [
   { key: "cbrown", label: "Brown pigment (Cbrown)", unit: "0-1.5", d: 2, max: 1, note: "rises when the leaves age and ripen" },
 ];
 
-export function traitsSection({ tr, season, week, weeks }) {
+// why a chlorophyll / brown-pigment week has no value (fix A rules): Cab also needs green LAI >= 0.5
+export function traitNotes(tr, lai) {
+  const why = (v, i, soil) => (v != null ? null : soil && lai?.[i] != null && lai[i] < 0.5 ? "LAI < 0.5 (soil)" : lai?.[i] != null ? "gap > 30 days" : null);
+  return { ccc: tr.ccc ? tr.ccc.map(() => null) : [], cab: tr.cab.map((v, i) => why(v, i, true)), cbrown: tr.cbrown.map((v, i) => why(v, i, false)) };
+}
+
+export function traitsSection({ tr, season, week, weeks, lai = null }) {
   if (!tr) return "";
+  const nts = traitNotes(tr, lai);
   const why = { ccc: "no value this week", cab: "not estimated: gap over 30 days or green LAI below 0.5", cbrown: "not estimated: gap over 30 days" };
   const kpis = TRAITS.map(t => { const v = tr[t.key][week];
     return `<div class="kpi"><div class="k">${t.label}</div><div class="v">${v == null ? "–" : fmtUnc(v, tr[`${t.key}_unc`][week], t.d)}</div><div class="s">${v == null ? why[t.key] : t.unit}</div></div>`; }).join("");
-  const charts = TRAITS.map(t => `<h4>${t.label} <span class="note">· ${t.note}</span></h4>${seriesChart({ values: tr[t.key], unc: tr[`${t.key}_unc`], src: tr[`${t.key}_src`] || tr.src, season, week, weeks, max: t.max, label: t.label })}`).join("");
+  const charts = TRAITS.map(t => `<h4>${t.label} <span class="note">· ${t.note}</span></h4>${seriesChart({ values: tr[t.key], unc: tr[`${t.key}_unc`], src: tr[`${t.key}_src`] || tr.src, season, week, weeks, max: t.max, label: t.label, notes: nts[t.key] })}`).join("");
   return `<h3>Chlorophyll and ripening</h3><div class="kpis">${kpis}</div>${charts}
     <p class="note">From the same Sentinel-2 images and network as green LAI. Cloudy weeks: canopy chlorophyll = the weekly green LAI
     (radar-filled in long gaps) × leaf chlorophyll; leaf chlorophyll and brown pigment by a straight line between clear images,
     with no value in gaps over 30 days (no radar model for them). Leaf chlorophyll is not shown where green LAI is below 0.5
-    (mostly soil signal). Canopy chlorophyll saturates in dense canopies like LAI. A satellite estimate, not measured plant nitrogen.</p>`;
+    (mostly soil signal). Hatched bands mark these weeks and say why. Canopy chlorophyll saturates in dense canopies like LAI. A satellite estimate, not measured plant nitrogen.</p>`;
 }
 
 // time sliders (forecast dates, field weeks, study-area frames): one round play / pause button everywhere
