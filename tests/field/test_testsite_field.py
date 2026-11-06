@@ -62,3 +62,12 @@ def test_season_bounds_winter_crop_starts_1_march():
     lai = np.interp(np.arange(len(d)), [0, 90, 140, 214], [1.0, 6.0, 0.2, 0.0])
     s, p, e = T.season_bounds(d, lai)
     assert s == d[0] and p == d[90]
+
+
+def test_season_bounds_after_sowing_ignores_cover_crop():
+    d = pd.date_range("2019-03-01", "2019-09-30")
+    lai = np.interp(np.arange(len(d)), [0, 36, 60, 110, 130, 175, 214], [1.4, 2.46, 0.3, 0.3, 2.38, 2.2, 2.2])
+    s, p, e = T.season_bounds(d, lai, after=pd.Timestamp("2019-04-20"))
+    assert p == d[130]
+    low = np.flatnonzero(lai[:130] < 0.5)                  # emergence: the day after the last bare day before the peak
+    assert s == d[low[-1] + 1] and s > pd.Timestamp("2019-05-15")

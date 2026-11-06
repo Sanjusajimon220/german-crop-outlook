@@ -23,10 +23,20 @@ from scipy import ndimage
 TOWERS = {   # lat, lon, elevation m, district (soil), DWD wind station (rule: nearest with wind on >= 95 % of season days)
     "dekli": dict(lat=50.893042, lon=13.5223, elev=478.0, district="14628", wind_station="06314"),
     "degeb": dict(lat=51.09973, lon=10.91463, elev=163.0, district="16068", wind_station="01270"),
+    # held-out towers (water v5 test): weather from the tower itself, soil = silt loam ruling (phase38)
+    "belon": dict(lat=50.5516198, lon=4.7462339, elev=170.0, district=None, wind_station=None),
+    "frgri": dict(lat=48.84422, lon=1.95191, elev=125.0, district=None, wind_station=None),
 }
-CROP = {("dekli", 2018): "maize", ("dekli", 2021): "wheat", ("dekli", 2022): "barley", ("dekli", 2023): "barley",
+CROP = {("dekli", 2017): "barley", ("dekli", 2018): "maize", ("dekli", 2021): "wheat", ("dekli", 2022): "barley", ("dekli", 2023): "barley",
         ("dekli", 2025): "wheat", ("degeb", 2020): "potato", ("degeb", 2021): "wheat", ("degeb", 2022): "wheat",
-        ("degeb", 2024): "wheat"}
+        ("degeb", 2024): "wheat",
+        ("belon", 2017): "wheat", ("belon", 2018): "potato", ("belon", 2019): "wheat", ("belon", 2020): "sugar beet",
+        ("belon", 2022): "wheat", ("belon", 2023): "potato", ("belon", 2024): "wheat",
+        ("frgri", 2018): "wheat", ("frgri", 2019): "maize", ("frgri", 2020): "wheat", ("frgri", 2022): "wheat",
+        ("frgri", 2023): "barley", ("frgri", 2024): "sugar beet", ("frgri", 2025): "wheat"}
+# Recorded sowing dates of held-out SPRING crops (ICOS archives; ruling 2026-11-06, before the held-out look)
+SOWN = {("belon", 2018): "2018-04-23", ("belon", 2020): "2020-04-01", ("belon", 2023): "2023-05-03",
+        ("frgri", 2019): "2019-04-20", ("frgri", 2024): "2024-04-13"}
 RADIUS_PX, HALF = 60, 75          # 600 m search radius; window half-size read around the tower (750 m)
 
 
@@ -55,13 +65,21 @@ def interior(mask, px):
     return ndimage.distance_transform_edt(mask) > px
 
 
-def season_bounds(dates, lai):
-    """(start, peak, end) from a daily LAI series (already smoothed)."""
+def season_bounds(dates, lai, after=None):
+    """(start, peak, end) from a daily LAI series (already smoothed). after: recorded sowing date of a spring crop
+    (ruling 2026-11-06): the peak is searched after it, and the start is the day after the last bare (LAI < 0.5) day
+    before that peak, so a cover crop before sowing is ignored."""
     dates = pd.DatetimeIndex(dates)
     lai = np.asarray(lai, float)
-    up = np.flatnonzero(lai >= 0.5)
-    start = dates[up[0]] if len(up) else dates[0]
-    ip = int(np.nanargmax(lai))
+    if after is not None:
+        i0 = int(np.searchsorted(dates, pd.Timestamp(after), side="right"))
+        ip = i0 + int(np.nanargmax(lai[i0:]))
+        low = np.flatnonzero(lai[:ip] < 0.5)
+        start = dates[low[-1] + 1] if len(low) else dates[0]
+    else:
+        up = np.flatnonzero(lai >= 0.5)
+        start = dates[up[0]] if len(up) else dates[0]
+        ip = int(np.nanargmax(lai))
     after = np.flatnonzero(lai[ip:] < 0.5)
     end = dates[ip + after[0]] if len(after) else dates[-1]
     return start, dates[ip], end
@@ -185,7 +203,7 @@ def build(area, year):
         print(info, flush=True)
         return info
     obs, daily = field_lai(area, year, rows, cols)
-    start, peak, end = season_bounds(daily.index, daily.values)
+    start, peak, end = season_bounds(daily.index, daily.values, SOWN.get((area, year)))
     tr = W["transform"]
     info = dict(area=area, year=year, crop=CROP[(area, year)], field_px=int(mask.sum()), field_ha=float(mask.sum() / 100),
                 lai_px=int(len(rows)), s2_dates=int(len(W["dates"])), lai_dates=int(len(obs)),
@@ -196,6 +214,20 @@ def build(area, year):
     json.dump(info, open(os.path.join(o, "testsite_field.json"), "w"), indent=1)
     _map(W, mask, info, os.path.join(o, "testsite_outline.png"))
     print(info, flush=True)
+    return info
+
+
+def reseason(area, year):
+    """Re-date an already built season from its saved daily LAI (season_bounds with the sowing ruling)."""
+    from areas import out_dir
+    o = out_dir(area, year)
+    daily = pd.read_csv(os.path.join(o, "testsite_lai_daily.csv"), index_col=0, parse_dates=True)["lai"]
+    start, peak, end = season_bounds(daily.index, daily.values, SOWN.get((area, year)))
+    p = os.path.join(o, "testsite_field.json")
+    info = json.load(open(p))
+    info.update(start=str(start.date()), peak=str(peak.date()), end=str(end.date()),
+                peak_lai=float(daily.loc[peak]), sown=SOWN.get((area, year)))
+    json.dump(info, open(p, "w"), indent=1)
     return info
 
 

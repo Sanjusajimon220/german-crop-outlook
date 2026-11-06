@@ -3089,3 +3089,32 @@ explain only ~4 % of the gap. Only Sentinel-2 is needed (no radar, no Landsat). 
 archive (texture -> FAO-56 Table 19 field capacity / wilting point) - ruling to be logged when the archives are read.
 Files (ICOS metadata query): BE-Lon FLUXNET HH 2004-2024 195 MB + ARCHIVE 141 MB; FR-Gri FLUXNET HH 2004-2026 214 MB +
 ARCHIVE 104 MB (owner downloads, licence). Sentinel-2 per season ~0.3 GB (openEO; owner OK needed).
+2026-11-06 Owner OK: held-out test downloads (ICOS BE-Lon + FR-Gri FLUXNET HH + ARCHIVE ~650 MB, owner downloads; Sentinel-2 only ~0.3 GB per season, ~2.5-4 GB total on E, incl. DE-Kli 2017).
+2026-11-06 Held-out set (from the ICOS archives; BEFORE any held-out model run): BE-Lon 2017 wheat, 2018 potato, 2019
+wheat, 2020 sugar beet, 2022 wheat, 2023 potato, 2024 wheat (tower data end 2024); FR-Gri 2018 wheat, 2019 maize, 2020
+wheat, 2022 wheat, 2023 winter barley, 2024 sugar beet, 2025 wheat; DE-Kli 2017 spring barley. (Other years: oats,
+mustard, spinach / beans, rapeseed - not our crops.) Towers: BE-Lon 50.5516 N 4.7462 E 170 m, field 11.8 ha; FR-Gri
+48.8442 N 1.9519 E 125 m, field 19 ha. Rulings: (1) soil - the archives hold no sand / silt / clay, only stone content;
+both sites are deep silt-loam Luvisols on loess (literature) -> FAO-56 Table 19 silt loam midpoints for every 10 cm layer
+to 2 m, TEW / REW from the same table, identical for v2 and v5; (2) download box 3 x 3 km around BE-Lon / FR-Gri
+(Sentinel-2 only; DE-Kli 2017 used the 8 km box: 0.43 GB, more than the 0.3 GB estimated) -> held-out total < 1 GB,
+within the approved 2.5-4 GB. Folders on E (junctions on D).
+2026-11-06 Held-out: DE-Kli 2017 spring barley DROPPED by the pre-registered outline rule (0.1 ha; as DE-Kli 2022 spring barley the tower 3x3 pixels do not match the surrounding field - likely the instrument strip). Rule not changed. Held-out = 14 BE-Lon / FR-Gri seasons. Rulings: sonic height BE-Lon 2.0 m, FR-Gri 2.3 m (median of ICOS installs); tower ET0 gaps interpolated, rain gaps = 0 (counts reported). Code phase38_water_heldout.py, tests 3 pass.
+2026-11-06 Held-out ruling BEFORE the look (no tower data used): season dates for SPRING crops are searched after the recorded sowing date (ICOS archives), start = day after the last bare day (LAI < 0.5) before that peak. Reason: FR-Gri 2019 maize - the cover crop before sowing (LAI 2.46 in early April) beat the maize peak (2.38 in July), so the original rule dated the season 1 Mar - 29 Apr. Applies to held-out spring crops only (BE-Lon 2018/2020/2023 unchanged; FR-Gri 2019 -> 19 Jun - 23 Aug; FR-Gri 2024 beet built with it). v4 seasons untouched. Note: S2 window ends 31 Aug, so maize / beet seasons are cut at the last August image. Test test_season_bounds_after_sowing_ignores_cover_crop.
+
+## 2026-11-06 - Water v5 HELD-OUT ONE LOOK: PASS (narrow)
+Towers never used before: ICOS BE-Lon 2017-2024 (7 seasons) and FR-Gri 2018-2025 (7); DE-Kli 2017 dropped (outline rule);
+FR-Gri 2018 had no LE_CORR weeks (EBR 0.20 - tower data problem), so 13 seasons / 220 weeks scored. Tower weather for
+both models, LE_CORR truth (tower mean 17.4 mm/week).
+- Pooled weekly RMSE v2 7.07 -> v5 6.24 mm/week (ratio 0.88; needed <= 0.90) - PASS, small margin.
+- Pooled factor model / tower v2 1.08 -> v5 1.02 (needed 0.91-1.10) - PASS.
+- v5 better than v2 in 12 of 13 seasons (needed >= 60 %) - PASS (worse: BE-Lon 2023 potato 5.19 -> 5.57).
+- Secondary raw LE_F_MDS: mean RMSE 6.78 -> 5.46, factor 1.26 -> 1.21.
+RESULT: v5 PASSES its pre-registered held-out test. v5 (soil evaporation x0.60, Kcb-LAI k 0.45) replaces v2 as the
+reference water model. Still NOT advice: weekly error ~36 % of weekly ET; real-weather forecast, irrigation output and
+the 2027 trial are still required.
+Disclosed after the look (not tests): per-season factors range widely, 0.52-1.48 - the pooled near-1 bias hides two
+groups: (a) model far TOO LOW in BE-Lon potato 2018 (0.52) and sugar beet 2020 (0.58) - both dry summers, same pattern
+as DE-RuS potato 2022 (0.60): the model's water stress is too strong for deep-rooted crops on deep loess (root depth /
+soil store / capillary rise); (b) TOO HIGH in FR-Gri wheat 2020/2022 and barley 2023 (1.35-1.48). Next work: stress
+side (root depth, deep-soil water) - pre-register before touching it.

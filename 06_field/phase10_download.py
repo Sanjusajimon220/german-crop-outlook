@@ -1,6 +1,7 @@
 """Multi-year / multi-area download (pre-registered docs/project_log.md 2026-10-16): Sentinel-2 L2A (10 bands + SCL +
 angles) and Sentinel-1 GRD sigma0 VV/VH, ascending and descending, per area and season, same jobs as pilot 2024.
-Run `python phase10_download.py AREA YEAR [AREA YEAR ...]`; resumable (jobs found again by title)."""
+Run `python phase10_download.py [--s2-only] AREA YEAR [AREA YEAR ...]`; resumable (jobs found again by title).
+--s2-only: Sentinel-2 only (held-out water test 2026-11-06 needs no radar)."""
 import os
 import sys
 import time
@@ -11,7 +12,15 @@ from areas import bounds, period, raw_dir
 from phase7_step2_download import BANDS, retry
 
 
-def jobs_for(con, area, year):
+FOLDERS = ("s2", "s1", "s1_desc")
+
+
+def pending(area, year, folders=FOLDERS):
+    """Product folders (in the given choice) without a .complete marker."""
+    return [f for f in folders if not os.path.exists(os.path.join(raw_dir(area, year), f, ".complete"))]
+
+
+def jobs_for(con, area, year, folders=FOLDERS):
     x0, y0, x1, y1 = bounds(area)
     BB = dict(west=x0, south=y0, east=x1, north=y1, crs="EPSG:32632")
     T = period(year)
@@ -29,19 +38,19 @@ def jobs_for(con, area, year):
 
     existing = {j.get("title"): j for j in retry(con.list_jobs) if j.get("status") in ("created", "queued", "running", "finished")}
     out = {}
+    todo = pending(area, year, folders)                            # fully downloaded folders carry a .complete marker
     for folder, title, make in (("s2", f"field v2 s2 {area} {year}", s2), ("s1", f"field v2 s1 ascending {area} {year}", s1("ascending")),
                                 ("s1_desc", f"field v2 s1 descending {area} {year}", s1("descending"))):
-        d = os.path.join(raw_dir(area, year), folder)
-        if os.path.exists(os.path.join(d, ".complete")):
-            continue                                               # fully downloaded (marker written after download)
+        if folder not in todo:
+            continue
         out[folder] = con.job(existing[title]["id"]) if title in existing else retry(lambda: make(con))
     return out
 
 
-def main(pairs):
+def main(pairs, folders=FOLDERS):
     con = openeo.connect("openeo.dataspace.copernicus.eu").authenticate_oidc()
     for area, year in pairs:
-        jobs = jobs_for(con, area, year)
+        jobs = jobs_for(con, area, year, folders)
         for k, j in jobs.items():
             if retry(j.status) == "created":
                 retry(j.start)
@@ -65,4 +74,6 @@ def main(pairs):
 
 if __name__ == "__main__":
     a = sys.argv[1:]
-    main([(a[i], int(a[i + 1])) for i in range(0, len(a), 2)])
+    f = ("s2",) if "--s2-only" in a else FOLDERS
+    a = [x for x in a if x != "--s2-only"]
+    main([(a[i], int(a[i + 1])) for i in range(0, len(a), 2)], f)

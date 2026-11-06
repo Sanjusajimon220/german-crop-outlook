@@ -18,8 +18,9 @@ OUT = os.path.join("data", "processed", "field_v2", "water_bias")
 SEASONS = [("selhausen", 2021), ("selhausen", 2022), ("selhausen", 2023), ("selhausen", 2024), ("selhausen", 2025),
            ("dekli", 2018), ("dekli", 2021), ("dekli", 2023), ("dekli", 2025),
            ("degeb", 2021), ("degeb", 2022), ("degeb", 2024)]
-SONIC_M = {"selhausen": 2.67, "dekli": 3.5, "degeb": 3.05}          # ICOS INST files (sonic anemometer height)
-TOWER_DIR = {"selhausen": "fx_inner", "dekli": "fx_Kli_inner", "degeb": "fx_Geb_inner"}
+SONIC_M = {"selhausen": 2.67, "dekli": 3.5, "degeb": 3.05, "belon": 2.0, "frgri": 2.3}   # ICOS INST sonic height (held-out: median)
+TOWER_DIR = {"selhausen": "fx_inner", "dekli": "fx_Kli_inner", "degeb": "fx_Geb_inner", "belon": "fx_Lon_inner",
+             "frgri": "fx_Gri_inner"}
 _es = lambda x: 0.6108 * np.exp(17.27 * x / (x + 237.3))
 
 
