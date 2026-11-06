@@ -54,7 +54,7 @@ def kcb_from_lai(lai, kcb_mid, k=0.7):
     return KCB_MIN + (kcb_mid - KCB_MIN) * (1 - np.exp(-k * lai))
 
 
-def dual_kc_balance(et0, rain, kcb, lai, taw, p, tew, rew=ZE_REW, dr0=0.0):
+def dual_kc_balance(et0, rain, kcb, lai, taw, p, tew, rew=ZE_REW, dr0=0.0, ke_scale=1.0):
     """FAO-56 dual crop coefficient daily water balance (eq. 69-86). Buckets start full (root zone: depleted by dr0 mm). Returns daily e (soil evaporation),
     t (transpiration), et, ks, dr (root-zone depletion, mm) and de (surface-layer depletion)."""
     n = len(et0)
@@ -66,6 +66,7 @@ def dual_kc_balance(et0, rain, kcb, lai, taw, p, tew, rew=ZE_REW, dr0=0.0):
         few = max(1 - fc, 0.01)
         kr = 1.0 if de <= rew else max((tew - de) / max(tew - rew, 1e-9), 0.0)   # eq. 74
         ke = min(kr * (KC_MAX - kcb[i]), few * KC_MAX)                     # eq. 71
+        ke *= ke_scale                                                     # v5: residue / crust factor (1 = FAO-56)
         e = ke * et0[i]
         raw = p * taw[i]
         ks = 1.0 if dr <= raw else max((taw[i] - dr) / max(taw[i] - raw, 1e-9), 0.0)   # eq. 84

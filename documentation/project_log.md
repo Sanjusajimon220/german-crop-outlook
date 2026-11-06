@@ -3044,3 +3044,48 @@ TSEB ET bias (+1.4 mm/d, possibly the solar-ratio daily scaling or leaf / roughn
 Not adopted; platform unchanged. Options for the owner: denser thermal (ECOSTRESS 70 m, irregular; Sentinel-3 1 km
 sharpened to field = Sen-ET; future LSTM / TRISHNA) - new downloads + new pre-registration; or drop thermal for now and
 fix the soil-evaporation bias found in study A first (larger, clearer effect).
+
+## 2026-11-06 - Water v5 (soil-evaporation / partial-cover fix) PRE-REGISTRATION (before any v5 number)
+Owner OK (2026-11-06): truth rule + fix design + fit now; held-out download later after its own OK.
+TRUTH RULE (from now on, all water tests): primary = energy-balance-corrected tower ET (LE_CORR, ICOS / FLUXNET
+standard; raw LE_F_MDS under-measures by 15-40 % at DE-RuS / DE-Kli); raw LE_F_MDS always reported as a lower bound.
+Days: >= 80 % good LE_F_MDS half-hours AND LE_CORR present. A tower whose Mar-Sep energy balance ratio > 1.05 in that
+year (closure correction cannot work; DE-Geb 2021-2024) is reported separately and never decides.
+FIX (two settings only, both with a physical reason): (1) Ke scale f_e in [0.50, 1.00] step 0.05 multiplying FAO-56
+soil evaporation (residue / mulch / dry crust; FAO-56 reduces E ~5 % per 10 % residue cover, up to 50 %); (2) Kcb-LAI
+extinction k in [0.30, 0.70] step 0.05 in Kcb = Kcb_min + (Kcb_mid - Kcb_min)(1 - exp(-k LAI)) (v2: k 0.7).
+Everything else = v2 (buckets full at 1 March, rain only, Kc_max 1.2, REW 9 mm, district / BK50 soil).
+FIT: grid search minimising pooled weekly ET RMSE vs LE_CORR (weeks >= 5 valid days, satellite season start-end) on
+DE-RuS 2021-2025 + DE-Kli 2018 / 2021 / 2023 / 2025 (9 seasons; DE-Geb excluded by the closure rule). Ties -> the
+setting closer to v2. Reported: before / after per site and stage, season totals, raw-truth view, DE-Geb, and stress
+days (Ks < 0.9). All on seen data = descriptive, not proof.
+EXPECTATIONS stated now: early-season (LAI < 3) model ET down 25-40 %, full cover ~-5 %; pooled bias vs LE_CORR from
+x1.18 to x1.00-1.05; weekly RMSE -15-25 %; fewer / later stress days; DE-Geb stays high; DE-RuS potato 2022 stays low
+(too much stress, not evaporation).
+HELD-OUT TEST (one look, later; download needs owner OK): ICOS cropland towers not used before, seasons with our crops
+and Sentinel-2 (2017+): BE-Lon (Lonzee: wheat, sugar beet, potato, maize), FR-Gri (Grignon: wheat, maize, barley), and
+DE-Kli 2017 spring barley. Same field chain as DE-Kli / DE-Geb (phase33 outline + LAI), same truth rule. PASS if, pooled
+over deciding seasons: v5 weekly RMSE <= 0.90 x v2 AND |mean weekly log ratio v5 / tower| <= ln 1.10 AND v5 better
+than v2 in >= 60 % of seasons. Otherwise FAIL; v2 stays.
+Code: 06_field/phase37_water_v5.py; tests first. Platform unchanged.
+
+## 2026-11-06 - Water v5 FIT (seen data; descriptive, NOT proof)
+Code 06_field/phase37_water_v5.py (tests/field/test_water_v5.py, 4 pass; phase29 dual_kc_balance gained ke_scale, default
+1 = unchanged, v2/v3 tests pass; the fit first re-ran v2 exactly in all 12 seasons). Outputs water_v5/.
+Chosen f_e 0.60, k 0.45 (both inside the grid; flat valley f_e 0.55-0.65 x k 0.40-0.45). Pooled weekly RMSE vs LE_CORR
+6.35 -> 5.60 mm/week (-12 %; expected -15-25 %). Season factor model / tower (LE_CORR) 1.12 -> 1.00 (expected 1.00-1.05);
+raw truth 1.35 -> 1.21. v5 better than v2 in 8 of 9 fit seasons (worse: DE-RuS 2024 beet, 2.93 -> 4.63, now low 0.87).
+By stage vs LE_CORR: LAI < 1 1.07 -> 0.86 (-19 %), LAI 1-3 1.03 -> 0.91, LAI >= 3 1.06 -> 0.97, after peak 1.09 -> 1.02.
+NOTE: against LE_CORR the v2 early-season overshoot was only ~x1.07 (the x1.5-2 of study A was against raw ET); v5 now
+undershoots bare soil (0.86) - the fit trades early-season for later-season fit. Expected -25-40 % early drop: got -19 %.
+DE-Geb (not deciding, EBR 1.10-1.35): RMSE 5.19/5.66/10.22 -> 3.10/4.11/7.40, still high (x1.09-1.69).
+Stress: v5 predicts far fewer stress days (e.g. DE-RuS 2023 16 -> 0, 2024 15 -> 0, DE-Kli 2023 22 -> 0, 2025 28 -> 3);
+DE-RuS potato 2022 still 155 days and ET far too low (x0.60), as expected. On the 18 DE-RuS thermal dates (seen in B):
+v2 alert BA 0.81 (8 alerts, 2/2 hits), v5 BA 0.91 (5 alerts, 2/2 hits) - fewer false alarms, no missed stress (tiny sample).
+Held-out test amendment (BEFORE any held-out data exists on disk): HYRAS / SARAH-3 cover Germany only, so at ALL held-out
+seasons (BE-Lon, FR-Gri and, for consistency, DE-Kli 2017) both v2 and v5 run on the tower's own weather (ET0_tower as in
+study A, rain = tower P_F). Same inputs for both models, so the comparison stays fair; study A showed weather inputs
+explain only ~4 % of the gap. Only Sentinel-2 is needed (no radar, no Landsat). Soil: tower site soil from the ICOS
+archive (texture -> FAO-56 Table 19 field capacity / wilting point) - ruling to be logged when the archives are read.
+Files (ICOS metadata query): BE-Lon FLUXNET HH 2004-2024 195 MB + ARCHIVE 141 MB; FR-Gri FLUXNET HH 2004-2026 214 MB +
+ARCHIVE 104 MB (owner downloads, licence). Sentinel-2 per season ~0.3 GB (openEO; owner OK needed).
