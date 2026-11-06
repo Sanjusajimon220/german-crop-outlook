@@ -3118,3 +3118,62 @@ groups: (a) model far TOO LOW in BE-Lon potato 2018 (0.52) and sugar beet 2020 (
 as DE-RuS potato 2022 (0.60): the model's water stress is too strong for deep-rooted crops on deep loess (root depth /
 soil store / capillary rise); (b) TOO HIGH in FR-Gri wheat 2020/2022 and barley 2023 (1.35-1.48). Next work: stress
 side (root depth, deep-soil water) - pre-register before touching it.
+
+## 2026-11-06 - Water v6 (stress side) PRE-REGISTRATION (before any v6 number)
+Owner OK (2026-11-06): "yes start the stress side fix".
+DIAGNOSIS ON SEEN DATA (v5 as is; descriptive, disclosed as the basis of this design):
+- Pooled over the 22 seen deciding seasons (v5 fit 9 + held-out 13), weekly factor v5 / LE_CORR by the model's mean
+  weekly Ks: Ks < 0.6 -> 0.67 (58 weeks); 0.6-0.8 -> 0.86 (52); 0.8-0.95 -> 1.10 (30); >= 0.95 -> 1.12 (250).
+  The more stress the model predicts, the further it falls below the tower: the predicted stress is too strong.
+  By crop, stressed weeks (Ks < 0.95): potato 0.56 (32 weeks), sugar beet 0.62 (23), maize 0.87, wheat 0.97.
+- Examples: BE-Lon 2018 potato - root store 70 mm (silt loam 14 mm / 10 cm x 0.5 m), Ks 0.29 -> 0.10 in July while the
+  tower kept 16-24 mm / week; DE-RuS 2022 potato - Ks 0.2-0.4 in Jul-Aug, tower 20-31 mm / week.
+- Tower soil moisture (FLUXNET SWC_F_MDS_1 shallowest ... _5 deepest): potato BE-Lon 2018 / DE-RuS 2022 drew down the
+  upper three sensors, the deepest barely (<= 4 points); beet BE-Lon 2020 drew down the two deepest ~10-12 points.
+- Not part of this fix (reported separately later): unstressed weeks run x1.12 high, and FR-Gri cereals after harvest
+  (satellite LAI ~0.8 on stubble keeps the season open; e.g. barley 2023 June-Aug model 9-26 vs tower 6-19 mm / week).
+FIX v6 = v5 + two stress settings only, both with a physical reason:
+(1) root-depth scale r in [1.0, 2.0] step 0.1 multiplying the FAO-56 Table 22 maximum root depth of every crop, capped
+    at the 2.0 m model profile (FAO-56 depths are typical values; on deep loess wheat / beet roots reach 1.5-2 m and
+    potato 0.6-1.0 m). Same linear root growth 0.1 m -> max at peak LAI.
+(2) depletion-fraction shift dp in [0.00, 0.30] step 0.05 added to the FAO-56 Table 22 p of every crop, capped at
+    0.80 (stress starts later; deep silty soils keep water flowing to roots at higher depletion).
+Everything else = v5 (f_e 0.60, k 0.45; buckets full on 1 March; rain only; soils as before: district table / BK50,
+DE-Kli / DE-Geb site soil, BE-Lon / FR-Gri silt-loam ruling).
+FIT: grid (11 x 7) minimising pooled weekly ET RMSE vs LE_CORR (weeks >= 5 valid days inside the satellite season) on
+ALL 22 seen deciding seasons: DE-RuS 2021-2025, DE-Kli 2018/2021/2023/2025, BE-Lon 2017-2024 (7), FR-Gri 2019-2025 (6;
+2018 has no LE_CORR weeks). DE-Geb reported, never decides. Ties (within 1 % of the minimum RMSE) -> the setting closest
+to v5 (r 1.0, dp 0.0; distance |r - 1| + |dp| / 0.3). Regression check first: r 1.0 dp 0.0 must reproduce v5 exactly.
+Reported: before / after per season, pooled factor by v5 Ks class, stress days, raw-truth view, and (not deciding) model
+root-zone depletion vs tower SWC drawdown. All on seen data = descriptive, not proof.
+EXPECTATIONS stated now: chosen r 1.3-2.0 and / or dp 0.10-0.30; stressed-week factor (v5 Ks < 0.8) 0.76 -> 0.85-1.00;
+dry-year potato / beet season factors 0.52-0.60 -> 0.70-0.90; pooled factor up from ~1.02 to 1.03-1.10 (unstressed
+weeks already run high); pooled weekly RMSE -3 to -10 %; stress days drop by half or more.
+UNSEEN TEST (one look, later; downloads need owner OK): ICOS cropland towers never used: FR-EM2 (Estrees-Mons,
+northern France loess, 2017-2025), CZ-KrP (Kresin u Pacova, 2014-2023), CH-Oe2 (Oensingen, 2004-2024); seasons 2017+
+with our crops (from the ICOS archives, listed BEFORE any model run). Same chain as the v5 held-out test (phase33
+outline + Sentinel-2 LAI, tower weather, soil ruling logged before the look). PASS only if ALL: (a) pooled v6 weekly
+RMSE <= 0.95 x v5 (LE_CORR); (b) pooled factor v6 / tower within 0.91-1.10; (c) in weeks where v5 mean Ks < 0.8,
+|mean log ratio| v6 < v5. Needs >= 20 such stressed weeks, otherwise NOT TESTABLE. Any fail or not testable -> v5 stays.
+Code: 06_field/phase39_water_v6.py; tests first. Platform unchanged.
+
+## 2026-11-06 - Water v6 FIT (seen data; descriptive, NOT proof)
+Code 06_field/phase39_water_v6.py (tests/field/test_water_v6.py 5 pass; full field suite 176 pass). Regression check
+passed (r 1.0 dp 0.0 reproduces v5 root store in all 26 seasons). Outputs water_v6/ (fit_log, seasons, grid_rmse).
+Chosen r 1.9, dp 0.00 (lowest RMSE 5.25 at r 2.0, the grid edge; 1.9 within 1 % -> closer to v5 by the tie rule).
+The depletion-fraction shift never helped (RMSE rises with dp at every r): the fix is the root store, not the threshold.
+- Pooled weekly RMSE vs LE_CORR 5.97 -> 5.28 (-11.5 %; expected -3 to -10 %).
+- Stressed weeks (v5 Ks < 0.8, 110 weeks): factor 0.75 -> 1.05 (expected 0.85-1.00). By class: Ks < 0.6 0.67 -> 1.02,
+  0.6-0.8 0.86 -> 1.08; unstressed weeks unchanged 1.12.
+- Dry-year potato / beet: BE-Lon 2018 potato 0.52 -> 0.82 (RMSE 10.1 -> 6.0), BE-Lon 2020 beet 0.58 -> 0.81 (11.2 ->
+  5.6), DE-RuS 2022 potato 0.60 -> 0.75 (10.3 -> 7.2) (expected 0.70-0.90).
+- Pooled factor 1.00 -> 1.11 (expected 1.03-1.10: slightly above).
+- v6 better in only 11 of 22 fit seasons (many seasons have no stress and do not change); clearly WORSE: FR-Gri 2019
+  maize 4.37 -> 8.83 (factor 1.08 -> 1.48), FR-Gri wheat 2020 / 2022, barley 2023 (already too high, now 1.59-1.63),
+  DE-RuS 2025 wheat 5.69 -> 6.26. Stress days 899 -> 457.
+- Tower soil moisture (not deciding): correlation of model depletion with tower SWC drawdown is unchanged or slightly
+  lower for most seasons (e.g. BE-Lon 2017 0.70 -> 0.63), higher in the dry potato / beet years (0.93 -> 0.96, 0.88 -> 0.93).
+DISCLOSED RISK (after seeing the fit, no design change made): one root scale for all crops fixes the deep-rooted dry
+years but adds water to seasons that were already too high, so the pooled factor (1.11) is already outside the unseen
+test's criterion (b) 0.91-1.10 on seen data. The high side (unstressed weeks x1.12, FR-Gri post-harvest stubble) is
+untouched. Owner decision needed before the unseen test: test v6 as registered, or first pre-register a high-side fix.
