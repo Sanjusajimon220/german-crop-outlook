@@ -2970,3 +2970,77 @@ barely moved from v2. The thermal signal does track the tower day to day (r 0.83
 Next candidates (owner decides; each needs a new pre-registration and new data): a bias study of FAO-56 Kcb / ET0 at the
 three towers (all show the models high), and thermal used for stress detection rather than for amounts.
 2026-11-06 NRW raw field_v2 (20 seasons, 6,317 files) and test sites degeb 2022/2024 (673 files) SHA-256 verified on E (manifests E:\vista_archive\MANIFEST_nrw_raw_20261106.csv, MANIFEST_testsites2_20261106.csv), removed from D, junctions left. Free: C 50 GB, D 54 GB, E 79 GB. Raw satellite data now needs the USB drive plugged in.
+
+## 2026-11-06 - Owner request: (A) FAO-56 bias study at the three towers, (B) thermal stress alerts. PRE-REGISTRATION
+(written before any number below is computed; DE-RuS 2021-25 and DE-Kli / DE-Geb tower ET were seen in v2/v3/v4 looks,
+so (A) is a STUDY that explains, not a test; any fix it suggests is tested only on held-out data.)
+(A) FAO-56 bias study. Seasons = all 12 already used: DE-RuS 2021 beet, 2022 potato, 2023 wheat, 2024 beet, 2025 wheat;
+DE-Kli 2018 maize, 2021 wheat, 2023 barley, 2025 wheat; DE-Geb 2021, 2022, 2024 wheat. Days: satellite season
+start-end inside 1 Mar - 30 Sep, tower-valid days (>= 80 % good half-hours, as before). Model = v2 single run
+(all factors 1, buckets start full) with our usual inputs.
+1. Weather input: ET0_model (HYRAS / SARAH-3 / DWD station wind) vs ET0_tower = FAO-56 Penman-Monteith daily from the
+   tower's own TA_F (daily max / min of half-hours), VPD_F (actual vapour pressure = es(TA) - VPD, daily mean), SW_IN_F
+   (daily sum), WS_F at the sonic height (DE-RuS 2.67 m, DE-Kli 3.5 m, DE-Geb 3.05 m; FAO eq. 47 to 2 m), PA_F; net
+   radiation by FAO-56 from sunlight (not NETRAD), so both ET0s use the same equations. Driver split: ET0_model
+   recomputed with ONE tower input swapped in at a time (radiation, temperature, humidity, wind) -> change per driver.
+2. Crop coefficient: Kc_act = ET / ET0 with each side's own ET0 (tower: ET_tower / ET0_tower; model: ET_model /
+   ET0_model), compared by stage: LAI < 1; LAI 1-3 before the peak; LAI >= 3; after the peak; per crop.
+3. Attribution per week (>= 5 valid days): ln(ET_model / ET_tower) = ln(ET0_model / ET0_tower) + ln(Kc_model /
+   Kc_tower); pooled means -> share of the bias from weather inputs vs crop coefficient.
+4. Tower closure: same with LE_CORR; energy balance ratio (H + LE) / (NETRAD - G) on days with all four; reported as the
+   share of the gap that the tower's own under-closure explains.
+Output: tables + figure, water_bias/; a candidate correction is only PROPOSED here (e.g. ET0 input fix or Kcb by stage),
+fitted on these 12 seasons, and needs a held-out test (new pre-registration): DE-Kli 2017 spring barley (unused, S2
+available), DE-Kli older cereal years via Landsat LAI (2004-2016, new download), the 2026 season at all towers.
+(B) Thermal stress alerts (detection, not amounts). On each usable thermal date (v4 rules: clear interior pixels,
+cold screen, TSEB-PT): thermal stress index TSI = ET_thermal / (Kc_pot x ET0_model), Kc_pot = Kcb(LAI) + 0.05
+(v2 Kcb from LAI, Kcb_mid table, no stress). ALERT if TSI < 0.7. Truth (tower): tower stress index = ET_tower /
+(Kc_pot x ET0_tower) < 0.7 on the same day (tower-valid day, LAI >= 1 so transpiration dominates). Comparators on the
+same dates: v2 model alert (Ks < 0.9 on that day) and a simple rule (>= 10 days with < 5 mm rain AND ET0_model >= 3 mm).
+Scores: balanced accuracy (mean of hit rate and correct-no-alert rate), hit rate, false-alarm rate.
+JUDGED = DE-RuS (selhausen field, 2021-2025): its thermal-vs-tower agreement has never been looked at. DE-Kli / DE-Geb
+reported, NOT deciding (their thermal vs tower was seen in the v4 look: r 0.83, bias +1.4 mm/d - disclosed).
+PASS if on DE-RuS: >= 15 thermal dates with LAI >= 1, both classes present (>= 3 stressed tower days), thermal balanced
+accuracy >= 0.70 AND higher than both the v2 alert and the simple rule. Otherwise FAIL / NOT TESTABLE (too few).
+Code: 06_field/phase35_water_bias.py (A), phase36_thermal_stress.py (B); tests first. Platform unchanged either way.
+
+## 2026-11-06 - FAO-56 bias study (A): RESULT (study, not a test)
+Code 06_field/phase35_water_bias.py (tests/field/test_water_bias.py, 5 pass); outputs data/processed/field_v2/water_bias/
+(bias_report.txt, attribution.csv, et0_swaps.csv, days.csv, weeks.csv, bias_figure.png). 223 weeks, 12 seasons.
+- Model v2 ET / tower ET (LE_F_MDS), weekly log-mean: x1.37 overall (DE-RuS 1.17, DE-Kli 1.57, DE-Geb 1.52); 11 of 12
+  seasons high, only DE-RuS potato 2022 low (0.70; model water stress too strong there).
+- Weather inputs are NOT the problem: ET0 ours / ET0 tower weather x1.04 (12 % of the gap). Swaps: radiation -0.03,
+  wind -0.03 to -0.24 (our 2 m wind ~2.2-3.1 vs tower-derived 1.4-2.6 m/s; partly tall-crop sonic), temperature and
+  humidity mostly cancel. DE-Geb 2024 is the exception (x1.22).
+- Crop coefficient is the main part: x1.32. By stage the gap is largest on bare / young crops: Kc_model / Kc_tower
+  1.5-2.2 at LAI < 1, 1.4-1.6 at LAI 1-3, only 1.07-1.25 at full cover (LAI >= 3, except DE-Kli barley 1.8). Reading:
+  the model's SOIL EVAPORATION (Ke, upper limit Kc_max 1.2 on wet bare soil) is far too high, and Kcb on partial cover too.
+- Tower closure is the other large part: energy balance ratio DE-RuS 0.57-0.67, DE-Kli 0.68-0.86 (towers miss 15-40 %
+  of the energy); DE-Geb 1.10-1.35 (over-closure; Rn or G suspect). Against LE_CORR the gap is x1.18 overall: DE-RuS
+  1.00 (gone), DE-Kli 1.23, DE-Geb 1.51 (unchanged, as its closure correction is ~0).
+Conclusions (study level): (1) all our water looks were scored against LE_F_MDS, which under-measures ET by 15-40 % at
+DE-RuS / DE-Kli; standard ET validation (e.g. OpenET) uses energy-balance-closed tower ET - which truth to use must be
+decided before the next test; (2) independent of the truth, the model's evaporation from bare / partly covered soil is
+too high (factor 1.5-2 at LAI < 1 at all three sites). Candidate fix to PROPOSE (not adopted): soil evaporation
+(TEW / REW / few, Kc_max on bare soil) and Kcb on partial cover, fitted on these 12 seasons, tested on held-out data
+(DE-Kli 2017, older DE-Kli cereal years via Landsat, 2026 season) with a new pre-registration.
+Stress study (B) rulings BEFORE any (B) number (based on study A, which used no thermal-stress data):
+- Truth = tower stress index from LE_CORR (energy-balance-closed tower ET), because LE_F_MDS under-closes by 15-40 % at
+  DE-RuS / DE-Kli and would label normal days as stressed; LE_F_MDS version reported as secondary, not deciding.
+- Simple rule read as: rain over the previous 10 days (incl. the day) < 5 mm AND ET0_model >= 3 mm that day.
+- DE-RuS thermal: same v4 code path (pixels >= 100 m inside the v2 field of each year, same screen and TSEB); weather
+  from the DE-RuS v2 inputs (HYRAS cell, SARAH-3, DWD station 03623 wind at 10 m, as v2).
+
+## 2026-11-06 - Thermal stress alerts (B): ONE LOOK -> NOT TESTABLE (and no sign of skill)
+Code 06_field/phase36_thermal_stress.py (tests/field/test_thermal_stress.py, 4 pass); phase34 thermal() split into
+thermal_core() (regression: DE-Kli 2025 reproduced exactly, 42 dates). Outputs data/processed/field_v2/thermal_stress/.
+Judged DE-RuS 2021-2025: 32 usable thermal dates, 18 with LAI >= 1 and a tower day; tower-stressed (LE_CORR) only 2
+(needed >= 3, and >= 15 dates) -> NOT TESTABLE. Descriptively: thermal raised NO alert (TSI 0.81-1.59, median ~1.2;
+thermal ET reads high, as in v4), r(TSI, tower index) -0.12; v2 alert (Ks < 0.9) caught both stressed days with 6 false
+alarms (BA 0.81); simple rule BA 0.38. Not deciding (DE-Kli / DE-Geb, 14 dates, 3 stressed): thermal BA 0.67 (1 alert,
+1 hit), v2 0.41, rule 0.49; r(TSI, tower) 0.62.
+Reading: with Landsat alone, clear field-scale dates in the crop season are too few to test or run stress alerts, and the
+TSEB ET bias (+1.4 mm/d, possibly the solar-ratio daily scaling or leaf / roughness settings) pushes the index above 1.
+Not adopted; platform unchanged. Options for the owner: denser thermal (ECOSTRESS 70 m, irregular; Sentinel-3 1 km
+sharpened to field = Sen-ET; future LSTM / TRISHNA) - new downloads + new pre-registration; or drop thermal for now and
+fix the soil-evaporation bias found in study A first (larger, clearer effect).

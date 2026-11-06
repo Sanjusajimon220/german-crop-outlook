@@ -28,7 +28,7 @@ from pyTSEB import TSEB, net_radiation as rad, resistances as res   # noqa: E402
 OUT = os.path.join("data", "processed", "field_v2", "water_v4")
 N_VERSIONS, MIN_ESS = 2000, 50
 RANGES = {"taw_f": (0.5, 1.5), "root_f": (0.6, 1.4), "kcb_f": (0.7, 1.3), "dr0": (0.0, 0.5), "tew_f": (0.7, 1.3)}
-H_MAX = {"wheat": 0.9, "barley": 0.9, "maize": 2.5, "potato": 0.6}
+H_MAX = {"wheat": 0.9, "barley": 0.9, "maize": 2.5, "potato": 0.6, "sugar beet": 0.5}   # FAO-56 Table 12
 KC_TAB = {"wheat": (0.40, 1.15, 0.30), "barley": (0.30, 1.15, 0.25), "maize": (0.30, 1.20, 0.35),
           "potato": (0.50, 1.15, 0.75)}                                 # FAO-56 Table 12
 JUDGED = [("dekli", 2021), ("dekli", 2023), ("dekli", 2025), ("degeb", 2021), ("degeb", 2022), ("degeb", 2024)]
@@ -164,16 +164,21 @@ def _field(area, year):
 
 def thermal(area, year):
     """Thermal ET per clear Landsat date for the tower field (uses no tower data)."""
-    import rasterio
     from affine import Affine
+    from phase33_testsite_field import TOWERS, site_weather
+    z, info, lai = _field(area, year)
+    days = pd.date_range(f"{year}-03-01", f"{year}-09-30")
+    return thermal_core(area, year, z["mask"], int(z["r0"]), int(z["c0"]), Affine(*z["transform"]), lai, info,
+                        site_weather(area, days), TOWERS[area])
+
+
+def thermal_core(area, year, mask, r0, c0, tr10, lai, info, W, t):
+    """Thermal ET per clear Landsat date for a field mask on the 10 m grid (tr10, offset r0 / c0). W: daily weather with
+    tasmin, tasmax, hurs, rs (MJ), u10, et0; t: lat, lon, elev. Uses no tower data."""
+    import rasterio
     from areas import raw_dir
     from phase10_landsat import grid
     from phase31_landsat_thermal import kelvin
-    from phase33_testsite_field import TOWERS, site_weather
-    z, info, lai = _field(area, year)
-    t = TOWERS[area]
-    mask, r0, c0 = z["mask"], int(z["r0"]), int(z["c0"])
-    tr10 = Affine(*z["transform"])
     tr30, w30, h30 = grid(area)
     rr, cc = np.indices((h30, w30))
     xs, ys = rasterio.transform.xy(tr30, rr.ravel(), cc.ravel())
@@ -183,8 +188,6 @@ def thermal(area, year):
     idx30 = np.flatnonzero(keep)
     d = os.path.join(raw_dir(area, year), "landsat_st")
     sc = pd.read_csv(os.path.join(d, "scenes.csv"))
-    days = pd.date_range(f"{year}-03-01", f"{year}-09-30")
-    W = site_weather(area, days)
     rows = []
     for _, s in sc.iterrows():
         f = os.path.join(d, s["file"])
